@@ -20,6 +20,7 @@ import {
   rawJSON,
   str,
   toolResultText,
+  unwrapOnsetToolCall,
 } from './parse_types';
 
 /**
@@ -222,31 +223,25 @@ export function parseClaudeLike(e: Obj, tasks: TaskBoard): Event[] {
             break;
           }
           case 'tool_use': {
-            // qoder 不直接列 MCP 工具，一律经 mcp_call({toolName, arguments}) 调用（2026-11 实测）；
-            // 拆开成真正的工具名与参数，界面与桌宠才认得出这是 onset 的哪个工具。
+            // qoder 懒加载模式下经 mcp_call({toolName, arguments}) 调用，紧凑模式下各家经 tool_call / onset_call 调用扩展工具；
+            // 统一拆回真正的工具名与参数，界面与桌宠才认得出这是 onset 的哪个工具。
             const wrapped = str(block.name) === 'mcp_call' ? obj(block.input) : {};
-            if (str(wrapped.toolName) !== '') {
-              events.push({
-                kind: KindToolCall,
-                tool: str(wrapped.toolName),
-                call_id: str(block.id),
-                input: rawJSON(wrapped.arguments ?? {}),
-              });
-              break;
-            }
+            const baseTool = str(wrapped.toolName) !== '' ? str(wrapped.toolName) : str(block.name);
+            const baseInput = str(wrapped.toolName) !== '' ? (wrapped.arguments ?? {}) : block.input;
+            const { tool, input } = unwrapOnsetToolCall(baseTool, baseInput);
             events.push({
               kind: KindToolCall,
-              tool: str(block.name),
+              tool,
               call_id: str(block.id),
-              input: rawJSON(block.input),
+              input: rawJSON(input),
             });
-            if (str(block.name) === 'TodoWrite') {
-              const plan = planFromTodos(block.input);
+            if (tool === 'TodoWrite') {
+              const plan = planFromTodos(input);
               if (plan.length > 0) events.push({ kind: KindPlan, plan });
             }
-            if (str(block.name) === 'TaskCreate') tasks.create(str(block.id), block.input);
-            if (str(block.name) === 'TaskUpdate') {
-              const plan = tasks.update(block.input);
+            if (tool === 'TaskCreate') tasks.create(str(block.id), input);
+            if (tool === 'TaskUpdate') {
+              const plan = tasks.update(input);
               if (plan) events.push(plan);
             }
             break;

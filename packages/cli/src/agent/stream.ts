@@ -64,11 +64,22 @@ export class StreamWriter {
         const usage = obj(obj(e.result).usage);
         if (Object.keys(usage).length > 0) this.accumulate(usage);
         this.compactions++;
-        this.write(marshal({ type: 'system', subtype: 'compact_boundary', session_id: this.sessionID,
-          compact_metadata: { pre_tokens: obj(e.result).tokensBefore } }));
+        this.write(
+          marshal({
+            type: 'system',
+            subtype: 'compact_boundary',
+            session_id: this.sessionID,
+            compact_metadata: { pre_tokens: obj(e.result).tokensBefore },
+          }),
+        );
       } else {
-        this.write(marshal({ type: 'agent_event', session_id: this.sessionID,
-          event: { type: 'compaction', data: { status: e.aborted ? 'cancelled' : 'failed' } } }));
+        this.write(
+          marshal({
+            type: 'agent_event',
+            session_id: this.sessionID,
+            event: { type: 'compaction', data: { status: e.aborted ? 'cancelled' : 'failed' } },
+          }),
+        );
       }
       return;
     }
@@ -85,7 +96,14 @@ export class StreamWriter {
             session_id: this.sessionID,
             message: {
               role: 'user',
-              content: [{ type: 'tool_result', tool_use_id: String(message.toolCallId ?? ''), content: textOf(message.content), is_error: message.isError === true }],
+              content: [
+                {
+                  type: 'tool_result',
+                  tool_use_id: String(message.toolCallId ?? ''),
+                  content: textOf(message.content),
+                  is_error: message.isError === true,
+                },
+              ],
             },
           }),
         );
@@ -97,9 +115,36 @@ export class StreamWriter {
     const content: Obj[] = [];
     for (const item of Array.isArray(message.content) ? message.content : []) {
       const block = obj(item);
-      if (block.type === 'text' && typeof block.text === 'string' && block.text !== '') content.push({ type: 'text', text: block.text });
-      else if (block.type === 'thinking' && typeof block.thinking === 'string' && block.thinking !== '') content.push({ type: 'thinking', thinking: block.thinking });
-      else if (block.type === 'toolCall') content.push({ type: 'tool_use', id: String(block.id ?? ''), name: String(block.name ?? ''), input: obj(block.arguments) });
+      if (block.type === 'text' && typeof block.text === 'string' && block.text !== '')
+        content.push({ type: 'text', text: block.text });
+      else if (block.type === 'thinking' && typeof block.thinking === 'string' && block.thinking !== '')
+        content.push({ type: 'thinking', thinking: block.thinking });
+      else if (block.type === 'toolCall') {
+        const rawName = String(block.name ?? '');
+        const rawInput = obj(block.arguments);
+        if (
+          (rawName === 'tool_call' || rawName === 'onset_call') &&
+          typeof rawInput.tool === 'string' &&
+          rawInput.tool.trim() !== ''
+        ) {
+          let args: unknown = rawInput.arguments ?? {};
+          if (typeof args === 'string') {
+            try {
+              args = JSON.parse(args);
+            } catch {
+              // 非法 JSON 保留原值供界面显示。
+            }
+          }
+          content.push({
+            type: 'tool_use',
+            id: String(block.id ?? ''),
+            name: `mcp__onset__${rawInput.tool.trim()}`,
+            input: args && typeof args === 'object' && !Array.isArray(args) ? args : { value: args },
+          });
+        } else {
+          content.push({ type: 'tool_use', id: String(block.id ?? ''), name: rawName, input: rawInput });
+        }
+      }
     }
     const usage = obj(message.usage);
     if (Object.keys(usage).length > 0) {
@@ -107,11 +152,17 @@ export class StreamWriter {
       this.accumulate(usage);
     }
     if (message.stopReason === 'error' || message.stopReason === 'aborted') {
-      this.lastError = typeof message.errorMessage === 'string' && message.errorMessage !== '' ? message.errorMessage : String(message.stopReason);
+      this.lastError =
+        typeof message.errorMessage === 'string' && message.errorMessage !== ''
+          ? message.errorMessage
+          : String(message.stopReason);
     } else {
       this.lastError = '';
     }
-    if (content.length > 0) this.write(JSON.stringify({ type: 'assistant', session_id: this.sessionID, message: { role: 'assistant', content } }));
+    if (content.length > 0)
+      this.write(
+        JSON.stringify({ type: 'assistant', session_id: this.sessionID, message: { role: 'assistant', content } }),
+      );
   }
 
   private accumulate(usage: Obj): void {

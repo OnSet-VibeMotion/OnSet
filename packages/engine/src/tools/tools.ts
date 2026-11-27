@@ -28,6 +28,8 @@ export {
   type PermissionPrompt,
   type RendererAccess,
   RendererBuiltinTools,
+  ToolsCompactEnv,
+  ToolsFullEnv,
   ToolsMaxWaitEnv,
   ToolsServerName,
 } from './tools_mcp';

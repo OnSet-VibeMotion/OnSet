@@ -1,4 +1,14 @@
-import type { BackgroundTask, PermissionAsk, PlanItem, SessionEvent, Usage, ViewRequest } from '../../types';
+import type {
+  BackgroundTask,
+  PermissionAsk,
+  PlanItem,
+  QuestionAnswerItem,
+  QuestionAsk,
+  QuestionResolutionStatus,
+  SessionEvent,
+  Usage,
+  ViewRequest,
+} from '../../types';
 
 export {
   findMedia,
@@ -10,6 +20,7 @@ export {
   stripChoices,
   stylePickMessage,
 } from './proseParse';
+export { formatQuestionAnswersForChat, parseQuestionsBlock } from './questionParse';
 export { describeTool, pluginVerb, setPluginVerbs, strippedCommand } from './toolDescribe';
 
 /** 一轮里「过程」的一项：思考、工具调用、中间的话、报错与提示。 */
@@ -22,6 +33,17 @@ export type ProcessItem =
   | { type: 'step'; text: string; index: number; total: number };
 
 export type TurnState = 'running' | 'thinking' | 'done' | 'failed' | 'stopped' | 'interrupted';
+
+export interface TurnQuestion {
+  request: QuestionAsk;
+  deferred: boolean;
+  resolution?: {
+    status: QuestionResolutionStatus;
+    answers?: QuestionAnswerItem[];
+    answer_map?: Record<string, string | string[]>;
+    note?: string;
+  };
+}
 
 export interface TurnBlock {
   kind: 'turn';
@@ -39,6 +61,8 @@ export interface TurnBlock {
   reverted: boolean;
   /** 这一轮里编排工具请用户看的页面，显示在回复下面。 */
   views: ViewRequest[];
+  /** 这一轮里编排工具发起的结构化提问及其回答结果（历史回显）。 */
+  questions: TurnQuestion[];
 }
 
 export type Block = { kind: 'user'; event: SessionEvent } | TurnBlock | { kind: 'note'; event: SessionEvent };
@@ -67,6 +91,7 @@ export function buildBlocks(events: SessionEvent[]): Block[] {
         backgroundTasks: [],
         reverted: reverted.has(id),
         views: [],
+        questions: [],
       };
       turn = { block, raw: [] };
       turns.set(id, turn);
@@ -98,7 +123,30 @@ export function buildBlocks(events: SessionEvent[]): Block[] {
     else if (event.kind === 'turn-end') turn.block.end = event;
     else if (event.kind === 'usage') turn.block.usage = event.usage;
     else if (event.kind === 'view' && event.view) turn.block.views.push(event.view);
-    else turn.raw.push(event);
+    else if (event.kind === 'question' && event.question?.questions?.length) {
+      turn.block.questions.push({
+        request: {
+          id: event.question.id,
+          title: event.question.title,
+          questions: event.question.questions,
+          source: event.question.source ?? 'tool',
+        },
+        deferred: false,
+      });
+    } else if (event.kind === 'question-deferred' && event.question) {
+      const target = turn.block.questions.find((q) => q.request.id === event.question!.id);
+      if (target) target.deferred = true;
+    } else if (event.kind === 'question-resolved' && event.question?.status) {
+      const target = turn.block.questions.find((q) => q.request.id === event.question!.id);
+      if (target) {
+        target.resolution = {
+          status: event.question.status,
+          answers: event.question.answers,
+          answer_map: event.question.answer_map,
+          note: event.question.note,
+        };
+      }
+    } else turn.raw.push(event);
   }
   let previous: SessionEvent[] = [];
   for (const { block, raw } of turns.values()) {
@@ -239,8 +287,8 @@ function shapeTurn(block: TurnBlock, raw: SessionEvent[]) {
 /** 只用来更新待办清单的工具：TodoWrite 一次给全，TaskCreate / TaskUpdate 逐条建、逐条改（qoder、新版 claude）。 */
 const planTools = /^(todo_?write|task_?create|task_?update)$/i;
 
-/** 只做标记、不产出内容的 onset 工具：跑完的才算，还在跑的照常是过程的一部分。 */
-const quietTools = /^(mcp__onset__|onset[._])?(studio_step|studio_show)$/i;
+/** 只做标记或提问交互、不产出正文内容的 onset 工具：跑完的才算，还在跑的照常是过程的一部分。 */
+const quietTools = /^(mcp__onset__|onset[._])?(studio_step|studio_show|studio_confirm|studio_ask)$/i;
 
 function quietTool(item: ProcessItem): boolean {
   return item.type === 'tool' && !!item.result && quietTools.test(item.call.tool ?? '');
@@ -283,6 +331,34 @@ export function pendingPermissions(events: SessionEvent[]): PermissionAsk[] {
     }
   }
   return [...open.values()];
+}
+
+/**
+ * 编排工具还在等用户回答的结构化问题：发过 question、还没有对应的 question-resolved。
+ * 普通问题在 turn-end 时失效；标记过 question-deferred 的问题跨轮保留，直到用户提交或跳过。
+ */
+export function pendingQuestions(events: SessionEvent[]): QuestionAsk[] {
+  const open = new Map<string, QuestionAsk & { turn?: string }>();
+  for (const event of events) {
+    if (event.kind === 'question' && event.question?.questions?.length) {
+      open.set(event.question.id, {
+        id: event.question.id,
+        title: event.question.title,
+        questions: event.question.questions,
+        source: event.question.source ?? 'tool',
+        deferred: false,
+        turn: event.turn_id,
+      });
+    } else if (event.kind === 'question-deferred' && event.question) {
+      const item = open.get(event.question.id);
+      if (item) item.deferred = true;
+    } else if (event.kind === 'question-resolved' && event.question) {
+      open.delete(event.question.id);
+    } else if (event.kind === 'turn-end') {
+      for (const [id, item] of open) if (item.turn === event.turn_id && !item.deferred) open.delete(id);
+    }
+  }
+  return [...open.values()].map(({ turn: _turn, ...rest }) => rest);
 }
 
 /** 还在排队的消息：发过 queued、没被移除、之后也还没出现用户消息（出现即已合并发出）。 */

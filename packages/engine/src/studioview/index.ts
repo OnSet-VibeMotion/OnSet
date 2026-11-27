@@ -8,9 +8,10 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { marshal } from '../gojson';
 import { goQuote } from '../gofmt';
+import { marshal } from '../gojson';
 import * as plugin from '../plugin';
+import { formatViewInteraction } from './interaction';
 
 /** 这一轮的收件目录；不在客户端里运行时没有它，onset studio show 什么都不做。 */
 export const ViewInboxEnv = 'ONSET_STUDIO_INBOX';
@@ -58,7 +59,12 @@ export function viewPages(): ViewPage[] {
   const out: ViewPage[] = [...ViewPages];
   for (const { value: p } of plugin.pluginPages()) {
     const at = out.findIndex((x) => x.id === p.after);
-    out.splice(at < 0 ? out.length : at + 1, 0, { id: p.id, label: p.label, target: p.target, ...(p.slot ? { slot: true } : {}) });
+    out.splice(at < 0 ? out.length : at + 1, 0, {
+      id: p.id,
+      label: p.label,
+      target: p.target,
+      ...(p.slot ? { slot: true } : {}),
+    });
   }
   return out;
 }
@@ -112,7 +118,12 @@ export function steps(): Step[] {
   const out: Step[] = [...hostSteps];
   for (const { value: st } of plugin.pluginSteps()) {
     const at = st.before ? out.findIndex((x) => x.id === st.before) : -1;
-    out.splice(at < 0 ? out.length : at, 0, { id: st.id, label: st.label, hint: st.hint, ...(st.flow ? { flow: st.flow } : {}) });
+    out.splice(at < 0 ? out.length : at, 0, {
+      id: st.id,
+      label: st.label,
+      hint: st.hint,
+      ...(st.flow ? { flow: st.flow } : {}),
+    });
   }
   return out;
 }
@@ -150,7 +161,9 @@ export function dedicatedPage(project: string, rel: string): { page: string; tar
     try {
       const v = JSON.parse(fs.readFileSync(path.join(project, dir, 'scene.json'), 'utf8')) as { id?: unknown };
       if (typeof v.id === 'string' && v.id !== '') {
-        return path.posix.basename(rel) === 'index.html' ? { page: 'compose', target: v.id } : { page: 'scene', target: v.id };
+        return path.posix.basename(rel) === 'index.html'
+          ? { page: 'compose', target: v.id }
+          : { page: 'scene', target: v.id };
       }
     } catch {
       // 这一层不是镜头目录。
@@ -213,7 +226,8 @@ export function sceneIDs(root: string): string[] {
 export function validateViewRequest(project: string, req: ViewRequest): ViewRequest {
   const out: ViewRequest = { ...req };
   const step = (req.step ?? '').trim();
-  if (step !== '' && !stepIDs().includes(step)) throw new Error(`没有步骤 ${goQuote(step)}（可选：${stepIDs().join('、')}）`);
+  if (step !== '' && !stepIDs().includes(step))
+    throw new Error(`没有步骤 ${goQuote(step)}（可选：${stepIDs().join('、')}）`);
   if (step === '') delete out.step;
   else out.step = step;
   // 只记关卡确认、不切页：原话由后端对照这一轮用户的话核对。
@@ -234,13 +248,19 @@ export function validateViewRequest(project: string, req: ViewRequest): ViewRequ
     return { ...out, page: req.page };
   }
   const page = viewPage(req.page);
-  if (!page) throw new Error(`没有页面 ${goQuote(req.page)}（可选：${viewPages().map((p) => p.id).join('、')}）`);
+  if (!page)
+    throw new Error(
+      `没有页面 ${goQuote(req.page)}（可选：${viewPages()
+        .map((p) => p.id)
+        .join('、')}）`,
+    );
   out.target = (req.target ?? '').trim();
   switch (page.target) {
     case 'scene':
     case 'scene?': {
       if (out.target === '') {
-        if (page.target === 'scene') throw new Error(`${page.label} 页要给镜头编号：studio_show({"page": "${page.id}", "target": "<镜头编号>"})`);
+        if (page.target === 'scene')
+          throw new Error(`${page.label} 页要给镜头编号：studio_show({"page": "${page.id}", "target": "<镜头编号>"})`);
         break;
       }
       if (project === '') break;
@@ -249,12 +269,14 @@ export function validateViewRequest(project: string, req: ViewRequest): ViewRequ
       break;
     }
     case 'file': {
-      if (out.target === '') throw new Error('文件页要给项目里的相对路径：studio_show({"page": "file", "target": "<路径>"})');
+      if (out.target === '')
+        throw new Error('文件页要给项目里的相对路径：studio_show({"page": "file", "target": "<路径>"})');
       if (project !== '') {
         let rel = out.target;
         if (path.isAbsolute(rel)) rel = path.relative(project, rel);
         rel = path.normalize(rel).split(path.sep).join('/');
-        if (rel === '..' || rel.startsWith('../') || path.posix.basename(rel) === '.env') throw new Error(`只能打开项目里的文件：${out.target}`);
+        if (rel === '..' || rel.startsWith('../') || path.posix.basename(rel) === '.env')
+          throw new Error(`只能打开项目里的文件：${out.target}`);
         if (!fs.existsSync(path.join(project, rel))) throw new Error(`项目里没有文件 ${rel}`);
         out.target = rel;
         const special = dedicatedPage(project, rel);
@@ -296,7 +318,13 @@ export function writeViewRequest(env: Record<string, string | undefined>, req: V
   const valid = validateViewRequest(env[ViewProjectEnv] ?? '', req);
   if (inbox === '') return false;
   fs.mkdirSync(inbox, { recursive: true, mode: 0o755 });
-  const body = marshal({ page: valid.page, target: valid.target || undefined, note: valid.note || undefined, step: valid.step || undefined, confirm: valid.confirm });
+  const body = marshal({
+    page: valid.page,
+    target: valid.target || undefined,
+    note: valid.note || undefined,
+    step: valid.step || undefined,
+    confirm: valid.confirm,
+  });
   // 先写临时名再改名，轮询时不会读到写了一半的文件。文件名是纳秒时间戳，补零到 20 位以便按名字排序。
   const name = String(nextStamp()).padStart(20, '0');
   const tmp = path.join(inbox, '.' + name + '.tmp');
@@ -344,32 +372,9 @@ export function drainViewInbox(dir: string): ViewRequest[] {
   return out;
 }
 
-/** 步骤说明：宿主的逐个列出，只有某个流程用得上的（插件登记的）注明是那个流程的第一步。 */
-function stepHints(): string {
-  const all = steps();
-  const general = all.filter((x) => !x.flow).map((x) => `${x.id}（${x.hint}）`);
-  const own = all.filter((x) => x.flow).map((x) => `${x.flow}项目的第一步是 ${x.id}（${x.hint}）`);
-  return general.join('、') + own.map((x) => '；' + x).join('');
-}
-
 /** 写进对话约定（studioInteraction）的一条：怎样把用户带到某一页。 */
 export function viewInteraction(): string {
-  const pages = viewPages().map((page) => {
-    let item = page.id + '（' + page.label;
-    if (page.target === 'scene') item += '，后面跟镜头编号';
-    else if (page.target === 'scene?') item += '，可以跟镜头编号';
-    else if (page.target === 'file') item += '，后面跟项目里的相对路径';
-    return item + '）';
-  });
-  return (
-    '- 要用户看某样东西时，调用 studio_show({"page": "<页面>", "target": "<对象>", "note": "一句说明"})（对象与说明可省），网页会直接切到那一页，比在回复里贴大段内容或让用户自己去找好。页面：' +
-    pages.join('、') +
-    '。例如口播稿写好、请用户审稿时调用 studio_show({"page": "script", "note": "口播稿写好了，请看一遍"})；某个镜头渲染完请用户看效果时调用 studio_show({"page": "scene", "target": "scene-003"})。不要连续切来切去，一次只把用户带到眼下最该看的那一页。口播稿、分镜计划与处理方案、镜头、成片与配音合成版、发布信息都有自己的页面，用那一页，不要用 file 页打开它们的原文。\n' +
-    '- 每一轮结束前（汇报、停下来等用户之前）调用 studio_step({"step": "<步骤>"})，标出整片制作现在处在哪一步，网页顶栏会标出来：' +
-    stepHints() +
-    '。它只做标记，不切页。\n' +
-    '- 审核关卡（审稿、分镜审核这类停下来等用户确认的地方）：用户在对话里明确确认了（例如「就按这个分镜，开始渲染」），接着往下做之前先调用 studio_confirm({"said": "<用户确认的原话>"})，制作路线上那一关会标成已确认；用户只是提修改意见、或还没表态时不要调用，也不要替用户确认。\n' +
-    '- 用户的消息后面可能附一句「用户发这条消息时，Studio 网页上开着……」，说的是用户正在看的页面；用户说「这个镜头」「这段」时指的就是那里。'
-  );
+  return formatViewInteraction(viewPages(), steps());
 }
 export * from './permissions';
+export * from './questions';

@@ -7,7 +7,7 @@ const RawArgumentsMarker = '\n\nReceived arguments:\n';
 export function completeToolArguments(message: AssistantMessage): AssistantMessage | undefined {
   if (message.stopReason !== 'toolUse') return;
   const diagnostics = [...(message.diagnostics ?? [])];
-  const content = message.content.map(block => {
+  const content = message.content.map((block) => {
     if (block.type !== 'toolCall' || !block.argumentsError) return block;
     const start = block.argumentsError.indexOf(RawArgumentsMarker);
     if (start < 0) return block;
@@ -30,4 +30,26 @@ export function completeToolArguments(message: AssistantMessage): AssistantMessa
   });
   if (diagnostics.length === (message.diagnostics?.length ?? 0)) return;
   return { ...message, content, diagnostics };
+}
+
+const LegacyToolAliases: Record<string, string> = {
+  tool_help: 'tool_search',
+  onset_call: 'tool_call',
+};
+
+/** 静默把旧会话里的 tool_help / onset_call 映射到已注册的新工具名（tool_search / tool_call），避免续接报错。 */
+export function normalizeLegacyToolCalls(
+  message: AssistantMessage,
+  registeredTools: ReadonlySet<string>,
+): AssistantMessage | undefined {
+  if (message.stopReason !== 'toolUse') return;
+  let changed = false;
+  const content = message.content.map((block) => {
+    if (block.type !== 'toolCall') return block;
+    const mapped = LegacyToolAliases[block.name];
+    if (!mapped || registeredTools.has(block.name) || !registeredTools.has(mapped)) return block;
+    changed = true;
+    return { ...block, name: mapped };
+  });
+  return changed ? { ...message, content } : undefined;
 }

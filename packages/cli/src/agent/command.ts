@@ -2,9 +2,9 @@
  * onset studio agent：制作人（ORCHESTRATOR=director）。客户端与 onset run 按 tools.orchestratorInvocation 启动它，
  * 请求经 stdin 一行 JSON（director.Request），输出 claude 系的 stream-json，由 agentrun 解析。
  *
- * onset 的制作工具不经 MCP，直接在这个进程里做成 agent 的工具：工具列表与参数校验与工具服务（toolsmcp）
- * 是同一份（describeTools、prepareCall），每次调用照样起一个执行进程（Jobs），只是不用 wait_seconds /
- * job_wait——那是给 codex 的 60 秒 MCP 超时准备的，这里直接等到跑完，取消时整组结束。
+ * onset 的制作工具不经 MCP，直接在这个进程里做成 agent 的工具：工具目录与参数校验与工具服务（toolsmcp）
+ * 是同一份（describeToolCatalog、prepareCall、searchTools），编排档位默认静态紧凑模式（核心直出 + tool_search + tool_call），
+ * 每次调用照样起一个执行进程（Jobs），只是不用 wait_seconds / job_wait——直接等到跑完，取消时整组结束。
  *
  * pi 在单独的 onset-agent.cjs 里（见 pi.ts 的说明），只有这个命令加载它。
  */
@@ -13,8 +13,26 @@ import * as director from '@onset/engine/director';
 import * as studioview from '@onset/engine/studioview';
 import { currentEnvironment } from '../cli';
 import { Command } from '../cobra';
-import { callTarget, describeTools, Jobs, prepareCall, spawnOp, spawnOpWithService, type Spawner } from '../toolsmcp';
 import type { ParamValues } from '../ops/op';
+import {
+  callTarget,
+  type DescribeToolsOptions,
+  DirectOnlyTools,
+  describeToolCatalog,
+  Jobs,
+  LegacyOnsetCallName,
+  LegacyToolHelpName,
+  parseRoutedArguments,
+  prepareCall,
+  type Spawner,
+  searchTools,
+  spawnOp,
+  spawnOpWithService,
+  ToolCallName,
+  type ToolDef,
+  ToolSearchName,
+} from '../toolsmcp';
+import { askTool } from './ask';
 import { newGate } from './gate';
 import { todoTool } from './todo';
 import { toolOutputArchiveDir } from './tool-errors';
@@ -32,14 +50,50 @@ export async function loadAgentModule(): Promise<AgentModule> {
   return (await import('./pi')) as AgentModule;
 }
 
+async function runOpDef(
+  jobs: Jobs,
+  targetDef: ToolDef,
+  opInput: ParamValues,
+  signal: AbortSignal | undefined,
+): Promise<{ text: string; isError: boolean; imagePath?: string }> {
+  let params: ParamValues;
+  try {
+    params = prepareCall(targetDef, opInput);
+  } catch (err) {
+    return { text: (err as Error).message, isError: true };
+  }
+  const target = callTarget(targetDef, params);
+  const job = jobs.start(target.name, target.params);
+  const reply = await jobs.wait(job, undefined, signal);
+  if (signal?.aborted) jobs.cancel(job.id);
+  const sheet = (reply.data as { sheet?: unknown } | undefined)?.sheet;
+  return {
+    text: reply.text,
+    isError: reply.isError,
+    ...(targetDef.name === 'scene_preview_check' && !reply.isError && typeof sheet === 'string'
+      ? { imagePath: sheet }
+      : {}),
+  };
+}
+
 /**
- * 把编排档位的操作做成 agent 的工具；job_wait、job_cancel 不要（这里直接等到跑完）。
- * 除了只读的 tool_help，都顺序执行：模型一次发出 scene_cues 与 scene_run 时，后者要等前者写完 scene.json。
+ * 把编排/渲染档位的操作做成 agent 的工具；job_wait、job_cancel 不要（这里直接等到跑完）。
+ * 编排档位共享 describeToolCatalog()：默认静态紧凑模式（核心直出 + tool_search + tool_call）。
+ * tool_search / tool_help 为只读并发（sequential: false），tool_call 与业务操作均顺序执行（sequential: true）。
  */
-export function onsetTools(spawner: Spawner = spawnOp, root = '', profile: 'orchestrator' | 'renderer' = 'orchestrator', archiveDir: string | (() => string) = toolOutputArchiveDir): { tools: AgentTool[]; jobs: Jobs } {
+export function onsetTools(
+  spawner: Spawner = spawnOp,
+  root = '',
+  profile: 'orchestrator' | 'renderer' = 'orchestrator',
+  archiveDir: string | (() => string) = toolOutputArchiveDir,
+  options: DescribeToolsOptions = {},
+): { tools: AgentTool[]; jobs: Jobs } {
   const jobs = new Jobs(spawner, archiveDir);
-  const defs = describeTools(profile, root).filter((t) => t.name !== 'job_wait' && t.name !== 'job_cancel');
-  const byName = new Map(defs.map((t) => [t.name, t]));
+  const catalog = describeToolCatalog(profile, root, options);
+  const defs = catalog.exposed.filter(
+    (t) => t.name !== 'job_wait' && t.name !== 'job_cancel' && t.name !== studioview.StudioAskToolName,
+  );
+  const allByName = new Map(catalog.all.map((t) => [t.name, t]));
   const tools: AgentTool[] = defs.map((def) => {
     const schema = JSON.parse(JSON.stringify(def.inputSchema)) as { properties?: Record<string, unknown> };
     if (schema.properties) delete schema.properties.wait_seconds;
@@ -48,29 +102,28 @@ export function onsetTools(spawner: Spawner = spawnOp, root = '', profile: 'orch
       label: def.name,
       description: def.description,
       parameters: schema as Record<string, unknown>,
-      sequential: def.name !== 'tool_help',
+      sequential: def.name !== ToolSearchName && def.name !== LegacyToolHelpName,
       async execute(input, signal) {
-        if (def.name === 'tool_help') {
-          const target = byName.get(String(input.tool ?? ''));
-          if (!target) return { text: `没有这个工具：${String(input.tool ?? '')}`, isError: true };
-          return { text: target.help || target.description, isError: false };
+        if (def.name === ToolSearchName || def.name === LegacyToolHelpName) {
+          return searchTools(catalog, input as ParamValues, { legacyHelp: def.name === LegacyToolHelpName });
         }
-        let params: ParamValues;
-        try {
-          params = prepareCall(def, input as ParamValues);
-        } catch (err) {
-          return { text: (err as Error).message, isError: true };
+        if (def.name === ToolCallName || def.name === LegacyOnsetCallName) {
+          const opName = String(input.tool ?? '').trim();
+          if (opName === '') return { text: `${def.name} 缺少参数 tool`, isError: true };
+          if (DirectOnlyTools.has(opName)) {
+            return { text: `请直接调用 ${opName}，不要经 ${def.name} 转发`, isError: true };
+          }
+          let opInput: ParamValues;
+          try {
+            opInput = parseRoutedArguments(input.arguments, def.name);
+          } catch (err) {
+            return { text: (err as Error).message, isError: true };
+          }
+          const targetDef = allByName.get(opName);
+          if (!targetDef?.op) return { text: `没有这个工具：${opName}`, isError: true };
+          return runOpDef(jobs, targetDef, opInput, signal);
         }
-        const target = callTarget(def, params);
-        const job = jobs.start(target.name, target.params);
-        const reply = await jobs.wait(job, undefined, signal);
-        if (signal?.aborted) jobs.cancel(job.id);
-        const sheet = (reply.data as { sheet?: unknown } | undefined)?.sheet;
-        return {
-          text: reply.text,
-          isError: reply.isError,
-          ...(def.name === 'scene_preview_check' && !reply.isError && typeof sheet === 'string' ? { imagePath: sheet } : {}),
-        };
+        return runOpDef(jobs, def, input as ParamValues, signal);
       },
     };
   });
@@ -104,11 +157,16 @@ export function parseRequest(text: string): director.Request {
     resume: r.resume === true,
     model: typeof r.model === 'string' ? r.model : '',
     thinking: typeof r.thinking === 'string' && thinkingLevels.has(r.thinking) ? r.thinking : undefined,
-    compact_at: typeof r.compact_at === 'number' && Number.isSafeInteger(r.compact_at) && r.compact_at >= 32_000 ? r.compact_at : undefined,
+    compact_at:
+      typeof r.compact_at === 'number' && Number.isSafeInteger(r.compact_at) && r.compact_at >= 32_000
+        ? r.compact_at
+        : undefined,
     cache_key: typeof r.cache_key === 'string' && r.cache_key !== '' ? r.cache_key : undefined,
     unsafe: r.unsafe === true,
     commands: Array.isArray(r.commands) ? r.commands.filter((c): c is string => typeof c === 'string') : [],
-    writable_dirs: Array.isArray(r.writable_dirs) ? r.writable_dirs.filter((c): c is string => typeof c === 'string') : [],
+    writable_dirs: Array.isArray(r.writable_dirs)
+      ? r.writable_dirs.filter((c): c is string => typeof c === 'string')
+      : [],
     agent_dir: r.agent_dir,
     service: director.parseResolvedService(r.service) ?? undefined,
   };
@@ -122,15 +180,26 @@ export async function runBuiltinAgent(
   req: director.Request,
   write: (line: string) => void,
   signal: AbortSignal | undefined,
-  options: { spawner?: Spawner; gate?: Gate; setupModels?: (runtime: unknown) => Promise<string> | string; env?: Record<string, string | undefined> } = {},
+  options: {
+    spawner?: Spawner;
+    gate?: Gate;
+    setupModels?: (runtime: unknown) => Promise<string> | string;
+    env?: Record<string, string | undefined>;
+  } = {},
 ): Promise<{ ok: boolean; error?: string }> {
   const env = options.env ?? currentEnvironment();
   let archiveDir = toolOutputArchiveDir(req.session_id ?? '');
   // 整理经验这类会再起制作人的操作要拿到模型服务与 key：经执行进程的 stdin 交下去（spawnOpWithService），不进环境。
-  const onset = onsetTools(options.spawner ?? spawnOpWithService(req.service ?? null), req.workdir, req.profile ?? 'orchestrator', () => archiveDir);
+  const onset = onsetTools(
+    options.spawner ?? spawnOpWithService(req.service ?? null),
+    req.workdir,
+    req.profile ?? 'orchestrator',
+    () => archiveDir,
+  );
   const jobs = onset.jobs;
-  // 待办清单与 onset 的工具一样直接放行：它只把清单写进工具调用，什么也不做。
-  const tools = [...onset.tools, todoTool()];
+  const inbox = req.profile === 'renderer' ? '' : (env[studioview.ViewInboxEnv] ?? '');
+  // 待办清单与结构化提问工具和 onset 的工具一样直接放行。
+  const tools = [...onset.tools, todoTool(), ...(req.profile === 'renderer' ? [] : [askTool(inbox)])];
   const gate =
     options.gate ??
     newGate({
@@ -142,7 +211,7 @@ export async function runBuiltinAgent(
       extraReadDir: () => archiveDir,
       agentDir: req.agent_dir,
       onsetTools: new Set(tools.map((t) => t.name)),
-      inbox: req.profile === 'renderer' ? '' : env[studioview.ViewInboxEnv] ?? '',
+      inbox,
     });
   const agent = await loadAgentModule();
   try {
@@ -179,7 +248,9 @@ ORCHESTRATOR=director 启动，人不直接运行。请求经 stdin 一行 JSON�
       const parent = c.context();
       parent.addEventListener('abort', () => controller.abort(), { once: true });
       process.once('SIGTERM', () => controller.abort());
-      const result = await runBuiltinAgent(req, (line) => process.stdout.write(line + '\n'), controller.signal, { env });
+      const result = await runBuiltinAgent(req, (line) => process.stdout.write(line + '\n'), controller.signal, {
+        env,
+      });
       // 失败照常抛出：execute 打出原因、退出码 1，agentrun 据此判这一轮失败（原因同时在 result 事件里）。
       if (!result.ok) throw new Error(result.error ?? '制作人出错');
     },

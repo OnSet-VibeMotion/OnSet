@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { PermissionAsk, PlanItem, Scene } from '../../types';
+import type { PermissionAsk, PlanItem, QuestionAsk, Scene } from '../../types';
 import { describeTool, type TurnBlock } from './model';
 
 /**
@@ -51,6 +51,10 @@ export interface CrewSignal extends CrewState {
   choices: string[];
   /** 选项前面那句问话，截成一行。 */
   question: string;
+  /** 进行中或跨轮等待回答的结构化问题组数（studio_ask）。 */
+  questionsCount?: number;
+  /** 当前等待回答的结构化问题标题或首题摘要。 */
+  questionTitle?: string;
   /** 这一轮还在跑：桌宠上给「停下」。 */
   running: boolean;
   /** 此刻能不能发话（别的写任务占着项目、正在发送时不能）。 */
@@ -86,6 +90,8 @@ export type PetCommand =
 export interface PetDesk {
   choices: string[];
   question: string;
+  questionsCount?: number;
+  questionTitle?: string;
   running: boolean;
   canSend: boolean;
   recent: string[];
@@ -94,7 +100,17 @@ export interface PetDesk {
 /** 回复正文里选项前面的那句问话：去掉 choices 代码块，取最后一段的最后一行，截成一行。 */
 export function choiceQuestion(prose: string): string {
   const body = prose.replace(/```choices[\s\S]*?```/g, '').trim();
-  const line = body.split(/\n+/).map((l) => l.replace(/^[#>*\-\s]+/, '').replace(/\*\*/g, '').trim()).filter(Boolean).pop() ?? '';
+  const line =
+    body
+      .split(/\n+/)
+      .map((l) =>
+        l
+          .replace(/^[#>*\-\s]+/, '')
+          .replace(/\*\*/g, '')
+          .trim(),
+      )
+      .filter(Boolean)
+      .pop() ?? '';
   return line.length > 60 ? line.slice(0, 59) + '…' : line;
 }
 
@@ -110,7 +126,10 @@ const onset = '^(mcp__onset__|onset[._])?';
 /** 拍：渲染、等渲染任务，以及 HyperFrames 的 render 子命令。 */
 const filmingTools = new RegExp(onset + '(scene_run|scene_run_all|job_wait)$');
 /** 剪辑：拼接、复查、抽帧、各种校验与字幕时间轴。 */
-const editingTools = new RegExp(onset + '(concat|review|scene_frames|phrase_frames|audio_check|audio_mix|audio_patch_voice|align_run|align_build|align_text|timing_report|validate_[a-z_]+)$');
+const editingTools = new RegExp(
+  onset +
+    '(concat|review|scene_frames|phrase_frames|audio_check|audio_mix|audio_patch_voice|align_run|align_build|align_text|timing_report|validate_[a-z_]+)$',
+);
 /** 分镜：按分镜计划算镜头时长。 */
 const storyboardTools = new RegExp(onset + '(scene_prepare|scene_cues|beat_cues)$');
 /** 分镜的几份文件：整片处理方案、分镜计划（与 studio/storyboard.ts 的路径对应）。 */
@@ -141,8 +160,18 @@ function listScenes(ids: string[]): string {
   return ids.length > 2 ? `${ids.slice(0, 2).join('、')} 等 ${ids.length} 个镜头` : ids.join('、');
 }
 
-export function crewState(turn: TurnBlock | undefined, asks: PermissionAsk[], scenes: Scene[], now: number): CrewState | null {
+export function crewState(
+  turn: TurnBlock | undefined,
+  asks: PermissionAsk[],
+  scenes: Scene[],
+  now: number,
+  questions: QuestionAsk[] = [],
+): CrewState | null {
   if (!turn || turn.reverted) return null;
+  if (questions.length > 0) {
+    const count = questions[0].questions.length;
+    return { mood: 'waiting', line: count > 1 ? `有 ${count} 个问题等你拍板` : '等你回答问题' };
+  }
   if (turn.end) {
     const ended = Date.parse(turn.end.time);
     if (!Number.isFinite(ended) || now - ended > crewLinger) return null;
@@ -150,7 +179,8 @@ export function crewState(turn: TurnBlock | undefined, asks: PermissionAsk[], sc
     if (turn.state === 'stopped' || turn.state === 'interrupted') return { mood: 'stopped', line: '先停在这里' };
     return { mood: 'done', line: '收工' };
   }
-  if (asks.length > 0) return { mood: 'waiting', line: asks.length > 1 ? `有 ${asks.length} 件事等你批准` : '等你批准' };
+  if (asks.length > 0)
+    return { mood: 'waiting', line: asks.length > 1 ? `有 ${asks.length} 件事等你批准` : '等你批准' };
 
   const last = [...turn.process].reverse().find((item) => item.type !== 'step');
   if (last?.type === 'tool' && !last.result) {
@@ -176,7 +206,8 @@ export function crewState(turn: TurnBlock | undefined, asks: PermissionAsk[], sc
 /** 路径只留文件名，命令只留开头：气泡只有一行。 */
 function shorten(target: string): string {
   const oneLine = target.split('\n')[0].trim();
-  const base = /[\\/]/.test(oneLine) && !/\s/.test(oneLine) ? oneLine.split(/[\\/]/).filter(Boolean).pop() ?? oneLine : oneLine;
+  const base =
+    /[\\/]/.test(oneLine) && !/\s/.test(oneLine) ? (oneLine.split(/[\\/]/).filter(Boolean).pop() ?? oneLine) : oneLine;
   return base.length > 24 ? base.slice(0, 23) + '…' : base;
 }
 
@@ -189,10 +220,17 @@ function trimVerb(text: string): string {
  * 主窗口把工作室此刻的状态报给主进程，主进程转给桌宠窗口（main/pet.ts）。只在内容变了时发；
  * 一轮结束后的收工要按时退场，所以那段时间里到点再算一次。离开对话时发 null。
  */
-export function useCrewBroadcast(turn: TurnBlock | undefined, asks: PermissionAsk[], scenes: Scene[], project: string, desk: PetDesk): void {
+export function useCrewBroadcast(
+  turn: TurnBlock | undefined,
+  asks: PermissionAsk[],
+  scenes: Scene[],
+  project: string,
+  desk: PetDesk,
+  questions: QuestionAsk[] = [],
+): void {
   const [, setTick] = useState(0);
   const sent = useRef<string | null>(null);
-  const state = crewState(turn, asks, scenes, Date.now());
+  const state = crewState(turn, asks, scenes, Date.now(), questions);
   const signal: CrewSignal = {
     mood: state?.mood ?? 'idle',
     line: state?.line ?? '待命',
@@ -201,11 +239,15 @@ export function useCrewBroadcast(turn: TurnBlock | undefined, asks: PermissionAs
     asks: asks.map((ask) => ({ id: ask.id, text: askText(ask), always: !!ask.suggestion })),
     choices: desk.choices,
     question: desk.choices.length > 0 ? desk.question : '',
+    questionsCount: desk.questionsCount ?? 0,
+    questionTitle: desk.questionTitle ?? '',
     running: desk.running,
     canSend: desk.canSend,
     plan: (turn?.plan ?? []).map((p) => ({ text: p.text, status: p.status })),
     turnStarted: turn?.start ?? '',
-    renderSince: Object.fromEntries(scenes.filter((scene) => scene.rendering).map((scene) => [scene.id, scene.rendering_since ?? ''])),
+    renderSince: Object.fromEntries(
+      scenes.filter((scene) => scene.rendering).map((scene) => [scene.id, scene.rendering_since ?? '']),
+    ),
     recent: desk.recent,
   };
   const key = JSON.stringify(signal);

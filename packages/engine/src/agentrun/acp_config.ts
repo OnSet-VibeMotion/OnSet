@@ -177,12 +177,16 @@ export async function ensureModel(
   }
 }
 
-/** ACP 的 mcpServers：stdio 服务的 env 是 {name, value} 列表。agy 默认 MCP 超时 180 秒，给 onset 设 150 秒上限减少短轮询。 */
+/**
+ * ACP 的 mcpServers：stdio 服务的 env 是 {name, value} 列表。
+ * agy 默认 MCP 超时 180 秒，给 onset 设 150 秒上限减少短轮询；
+ * 编排档位已全局默认开启静态紧凑模式（核心精简直出 + tool_search + tool_call），所有后端均稳守 agy ~32 KB 声明预算。
+ */
 export function acpMcpServers(server: McpServer | undefined, tool = ''): Array<Record<string, unknown>> {
   if (!server) return [];
   const env = { ...(server.env ?? {}) };
-  if (tool === 'agy' && server.name === ToolsServerName && !env[ToolsMaxWaitEnv]) {
-    env[ToolsMaxWaitEnv] = '150';
+  if (tool === 'agy' && server.name === ToolsServerName) {
+    if (!env[ToolsMaxWaitEnv]) env[ToolsMaxWaitEnv] = '150';
   }
   return [
     {

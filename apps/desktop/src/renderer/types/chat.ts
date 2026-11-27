@@ -73,7 +73,10 @@ export type EventKind =
   | 'background-tasks'
   | 'context-compaction'
   | 'permission'
-  | 'permission-resolved';
+  | 'permission-resolved'
+  | 'question'
+  | 'question-deferred'
+  | 'question-resolved';
 
 /** 编排工具的待办清单一项。 */
 export interface PlanItem {
@@ -118,6 +121,61 @@ export interface SessionEvent {
   view?: ViewRequest;
   /** permission 事件：编排工具在等用户批准的调用；permission-resolved 带结果。 */
   permission?: PermissionAsk;
+  /** question / question-deferred / question-resolved 事件：结构化多题提问与结果。 */
+  question?: QuestionEventData;
+}
+
+export interface QuestionOption {
+  id?: string;
+  label: string;
+  description?: string;
+  recommended?: boolean;
+}
+
+export interface QuestionItem {
+  id: string;
+  header?: string;
+  question: string;
+  multi_select?: boolean;
+  required?: boolean;
+  options: QuestionOption[];
+  allow_other?: boolean;
+  other_placeholder?: string;
+}
+
+export interface QuestionAnswerItem {
+  question_id: string;
+  label: string;
+  selected: string[];
+  other?: string;
+}
+
+export type QuestionResolutionStatus = 'answered' | 'skipped' | 'cancelled' | 'expired';
+
+export interface QuestionAsk {
+  id: string;
+  title?: string;
+  questions: QuestionItem[];
+  source?: 'tool' | 'prose';
+  deferred?: boolean;
+}
+
+export interface QuestionEventData {
+  id: string;
+  title?: string;
+  questions?: QuestionItem[];
+  source?: 'tool' | 'prose';
+  deferred?: boolean;
+  status?: QuestionResolutionStatus;
+  answers?: QuestionAnswerItem[];
+  answer_map?: Record<string, string | string[]>;
+  note?: string;
+}
+
+export interface QuestionSubmitPayload {
+  status: 'answered' | 'skipped';
+  answers?: QuestionAnswerItem[];
+  note?: string;
 }
 
 /** 编排工具请用户批准的一次调用（后端 studio/permissions.ts 的 PermissionEventData）。 */

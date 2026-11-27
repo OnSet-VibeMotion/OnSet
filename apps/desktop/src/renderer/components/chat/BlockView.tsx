@@ -5,13 +5,17 @@ import { Markdown } from './Markdown';
 import {
   type Block,
   findMedia,
+  formatQuestionAnswersForChat,
   parseChoices,
+  parseQuestionsBlock,
   parseStylePicks,
   seconds,
   splitAttachmentText,
   stripChoices,
   type TurnBlock,
 } from './model';
+import { QuestionCard } from './QuestionCard';
+import { QuestionSummary } from './QuestionSummary';
 import { clockOf, TurnEnd } from './TurnEnd';
 import { ExecutionShell } from './TurnProcess';
 import { AnsweredOptions, MediaStrip, pickedOption, StylePicks, viewLabel } from './TurnWidgets';
@@ -25,6 +29,7 @@ export interface BlockProps {
   /** 这一轮之后用户说的第一句话：有它说明选项已经答过，收起没选的。 */
   answer?: string;
   onChoice: (text: string) => void;
+  onFocusComposer?: () => void;
   onRetry: (text: string) => void;
   onOpenFile: (path: string) => void;
   onView: (view: ViewRequest) => void;
@@ -100,10 +105,13 @@ function TurnView(props: BlockProps & { turn: TurnBlock }) {
   const live = turn.state === 'running' || turn.state === 'thinking';
   const elapsed = seconds(turn.start, turn.end?.time ?? props.now);
   const proseText = turn.prose.map((event) => event.text ?? '').join('\n\n');
-  const choices = parseChoices(proseText);
+  const proseQuestions = useMemo(() => parseQuestionsBlock(proseText, turn.id), [proseText, turn.id]);
+  const choices = useMemo(() => parseChoices(proseText), [proseText]);
   const picks = useMemo(() => parseStylePicks(proseText, new Set(props.styles.keys())), [proseText, props.styles]);
   const media = useMemo(() => findMedia(proseText, props.files), [proseText, props.files]);
-  const answered = props.answer !== undefined && !props.choicesEnabled && choices.length + picks.length > 0;
+  const resolvedQuestions = turn.questions.filter((item) => item.resolution !== undefined);
+  const optionCount = choices.length + picks.length + (proseQuestions ? proseQuestions.questions.length : 0);
+  const answered = props.answer !== undefined && !props.choicesEnabled && optionCount > 0;
   const picked = answered ? pickedOption(props.answer ?? '', choices, picks, props.styles) : undefined;
   const options = (
     <>
@@ -114,6 +122,18 @@ function TurnView(props: BlockProps & { turn: TurnBlock }) {
           version={props.posterVersion}
           enabled={props.choicesEnabled}
           onPick={props.onChoice}
+        />
+      )}
+      {proseQuestions && (
+        <QuestionCard
+          ask={proseQuestions}
+          disabled={!props.choicesEnabled || answered}
+          onSubmit={(payload) => {
+            if (payload.status === 'answered' && payload.answers) {
+              props.onChoice(formatQuestionAnswersForChat(proseQuestions, payload.answers, payload.note));
+            }
+          }}
+          onSkip={answered ? undefined : props.onFocusComposer}
         />
       )}
       {choices.length > 0 && (
@@ -143,6 +163,9 @@ function TurnView(props: BlockProps & { turn: TurnBlock }) {
           onOpenFile={props.onOpenFile}
         />
       )}
+      {resolvedQuestions.map((item) => (
+        <QuestionSummary key={item.request.id} item={item} />
+      ))}
       {proseText.trim() && (
         <div className="message assistant" data-ctx-label="回复" data-ctx-whole>
           <Markdown text={stripChoices(proseText)} />
@@ -165,7 +188,7 @@ function TurnView(props: BlockProps & { turn: TurnBlock }) {
       )}
       {media.length > 0 && <MediaStrip media={media} mtimes={props.mtimes} onOpenFile={props.onOpenFile} />}
       {answered ? (
-        <AnsweredOptions picked={picked} count={choices.length + picks.length}>
+        <AnsweredOptions picked={picked} count={optionCount}>
           {options}
         </AnsweredOptions>
       ) : (

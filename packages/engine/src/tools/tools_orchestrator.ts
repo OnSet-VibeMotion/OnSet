@@ -20,6 +20,7 @@ import {
   type McpServer,
   mcpArgs,
   type PermissionPrompt,
+  qoderEagerSettings,
   qoderOrchestratorSettings,
 } from './tools_mcp';
 import { rendererEnv, resolveDirectorCompactAt } from './tools_render';
@@ -237,8 +238,8 @@ export function orchestratorInvocation(
         'stream-json',
       ];
       if (tool === 'claude') {
-        // 片场质检用自己的抽帧工具。用户级 Chrome DevTools MCP 可能连到已有的浏览器会话。
-        if (o.toolsServer || permission) args.push('--disallowed-tools', 'mcp__chrome-devtools__*');
+        // 片场质检用自己的抽帧工具，提问统一走 mcp__onset__studio_ask（原生 AskUserQuestion 在 -p 无头模式下无法收集答案）。
+        if (o.toolsServer || permission) args.push('--disallowed-tools', 'mcp__chrome-devtools__*,AskUserQuestion');
         args.push('--prompt-suggestions', 'false');
       }
       const extra = tool === 'claude' ? claudeOptionSettings(options) : {};
@@ -265,6 +266,10 @@ export function orchestratorInvocation(
       const args = [qoderBinary(tool), '-p', o.prompt, ...m, '--output-format', 'stream-json'];
       if (o.unsafe) {
         args.push('--dangerously-skip-permissions');
+        if (o.toolsServer) {
+          args.push('--settings', marshal(qoderEagerSettings));
+          args.push(...mcpArgs(undefined, o.toolsServer));
+        }
       } else {
         args.push('--permission-mode', 'accept_edits');
         for (const command of access.commands ?? []) args.push('--allowed-tools', 'Bash(' + command + ':*)');

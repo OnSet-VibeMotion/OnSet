@@ -200,6 +200,7 @@ export function loadSessions(s: Server, projectPath: string): void {
       cancel: null,
       queue: [],
       permissions: new Map(),
+      questions: new Map(),
     };
     sess.events = readEvents(path.join(sessionsDir(projectPath), meta.session_id + '.events.jsonl'));
     restoreEndedTurns(sess);
@@ -259,6 +260,7 @@ export function createSession(
     cancel: null,
     queue: [],
     permissions: new Map(),
+    questions: new Map(),
   };
   writeMeta(sess);
   s.sessions.set(sessionKey(projectPath, sess.meta.session_id), sess);

@@ -3,11 +3,11 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
 import * as plugin from '@onset/engine/plugin';
+import { describe, expect, it } from 'vitest';
 import { findOp } from './ops/op';
 import { Buffer, run, tempDir } from './testutil';
-import { describeTools } from './toolsmcp';
+import { describeToolCatalog } from './toolsmcp';
 
 describe('ops registered by builtin plugins', () => {
   it('validate_publish comes from the publishing plugin and still runs', async () => {
@@ -39,24 +39,26 @@ describe('ops registered by builtin plugins', () => {
     });
     try {
       expect(findOp('fake_echo')?.summary).toBe('回显');
-      const tool = describeTools('orchestrator').find((t) => t.name === 'fake_echo');
+      const tool = describeToolCatalog('orchestrator').all.find((t) => t.name === 'fake_echo');
       expect(tool?.inputSchema.required).toEqual(['text']);
       expect(tool?.help).toContain('fake_echo({"text": "hi"})');
       // 项目里同样有（内置插件常开）。
-      expect(describeTools('orchestrator', tempDir()).some((t) => t.name === 'fake_echo')).toBe(true);
+      expect(describeToolCatalog('orchestrator', tempDir()).all.some((t) => t.name === 'fake_echo')).toBe(true);
     } finally {
       undo();
     }
     expect(findOp('fake_echo')).toBeUndefined();
   });
 
-  it('the tool list of every project carries every builtin plugin\'s tools', () => {
-    const listed = describeTools('orchestrator', tempDir()).map((t) => t.name);
+  it("the tool list of every project carries every builtin plugin's tools", () => {
+    const listed = describeToolCatalog('orchestrator', tempDir()).all.map((t) => t.name);
     for (const id of ['song', 'cast', 'publishing']) {
-      const names = plugin.pluginOps().filter((o) => o.owner === id).map((o) => o.value.name);
+      const names = plugin
+        .pluginOps()
+        .filter((o) => o.owner === id)
+        .map((o) => o.value.name);
       expect(names.length, id).toBeGreaterThan(0);
       for (const name of names) expect(listed, name).toContain(name);
     }
   });
-
 });

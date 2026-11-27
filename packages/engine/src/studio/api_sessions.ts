@@ -21,6 +21,7 @@ import {
   writeJSON,
 } from './http';
 import { answerPermission } from './permissions';
+import { answerQuestion } from './questions';
 import {
   type Attachment,
   BusyError,
@@ -203,6 +204,56 @@ export async function sessionAPI(s: Server, request: Request, rest: string): Pro
       }
       if (!ok) return writeError(409, 'not_pending', '这条请求已经答过，或这一轮已经结束');
       return writeJSON(200, goMap({ ok: true }));
+    }
+    case 'questions': {
+      // /api/sessions/{id}/questions/{question_id}：POST {"status":"answered"|"skipped", "answers":[...], "note"?:""}。
+      if (request.method !== 'POST') return methodNotAllowed('POST');
+      if (parts.length !== 3 || !/^[a-z0-9-]{1,64}$/.test(parts[2])) {
+        return writeError(404, 'not_found', '提问请求不存在');
+      }
+      let body: Record<string, unknown>;
+      let view: ReturnType<typeof decodeView>;
+      try {
+        body = await decodeJSON(request);
+        // 在消费问题前先校验 view，避免非法 view 抛出 DecodeError 时已经删掉 pending 问题。
+        view = decodeView(fieldObject(body, 'view'));
+      } catch (err) {
+        if (err instanceof DecodeError) return writeError(400, 'invalid_json', err.message || '请求不是合法 JSON');
+        throw err;
+      }
+      const deferred: { continuation?: { queued?: boolean; turn_id?: string }; startFailure?: unknown } = {};
+      let answered: ReturnType<typeof answerQuestion>;
+      try {
+        answered = answerQuestion(
+          sess.questions,
+          sess.events,
+          parts[2],
+          body,
+          (turn, event) => emit(sess, turn, event),
+          (message) => {
+            const next = { message, attachments: null, view };
+            if (enqueueTurn(p, sess, next)) {
+              deferred.continuation = { queued: true };
+              return;
+            }
+            try {
+              const turn = startTurn(s, p, sess, next);
+              deferred.continuation = { turn_id: turn.turn_id };
+            } catch (err) {
+              deferred.startFailure = err;
+              throw err;
+            }
+          },
+        );
+      } catch (err) {
+        if (deferred.startFailure !== undefined) return writeStartError(deferred.startFailure);
+        return writeError(400, 'invalid_answer', (err as Error).message);
+      }
+      if (!answered.ok) return writeError(409, 'not_pending', '这组问题已经答过，或这一轮已经结束');
+      if (deferred.continuation !== undefined) {
+        return writeJSON(202, goMap({ ok: true, mode: 'deferred', ...deferred.continuation }));
+      }
+      return writeJSON(200, goMap({ ok: true, mode: answered.mode }));
     }
     case 'cancel': {
       if (request.method !== 'POST') return methodNotAllowed('POST');

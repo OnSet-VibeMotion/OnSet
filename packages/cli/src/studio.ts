@@ -5,12 +5,12 @@
  */
 import readline from 'node:readline';
 import * as studioview from '@onset/engine/studioview';
+import { newAgentCommand } from './agent/command';
 import { currentEnvironment } from './cli';
 import { Command, type Out, ref } from './cobra';
 import { str } from './ops/common';
 import { defineOp } from './ops/op';
-import { type Profile, serveToolsMCP } from './toolsmcp';
-import { newAgentCommand } from './agent/command';
+import { compactModeEnabled, type Profile, serveToolsMCP } from './toolsmcp';
 
 export function newStudioCommand(_stdout?: Out): Command {
   const cmd = new Command({
@@ -72,7 +72,9 @@ note 的一句话显示在对话里，说明为什么要看这一页。
     }
     // 有专门页面的文件会改切到那一页（例如口播稿、成片），照实告诉调用方。
     const shown = studioview.validateViewRequest(env[studioview.ViewProjectEnv] ?? '', req);
-    out.write('已请客户端界面切到「' + pageLabel(shown.page) + '」' + (shown.target ? '（' + shown.target + '）' : '') + '。\n');
+    out.write(
+      '已请客户端界面切到「' + pageLabel(shown.page) + '」' + (shown.target ? '（' + shown.target + '）' : '') + '。\n',
+    );
     return { data: { shown: true, page: shown.page, target: shown.target ?? '' } };
   },
 });
@@ -90,10 +92,16 @@ said 写用户确认时的原话（照抄这一轮用户的话里表示确认的
 gate 一般不写，记的是路线上此刻在等确认的那一关；要指定时写关卡 id（例如 gate-script、gate-storyboard）。
 
 不在客户端的对话里调用时什么都不做，也不算失败。`,
-  examples: ['studio_confirm({"said": "就按这七种风格，开始渲染"})', 'studio_confirm({"said": "稿子没问题，开始配音", "gate": "gate-script"})'],
+  examples: [
+    'studio_confirm({"said": "就按这七种风格，开始渲染"})',
+    'studio_confirm({"said": "稿子没问题，开始配音", "gate": "gate-script"})',
+  ],
   params: {
     said: { type: 'string', description: '用户确认时的原话', required: true, positional: 0 },
-    gate: { type: 'string', description: '关卡 id（如 gate-script、gate-voice、gate-storyboard）；一般不写，自动匹配路线上在等确认的那一关' },
+    gate: {
+      type: 'string',
+      description: '关卡 id（如 gate-script、gate-voice、gate-storyboard）；一般不写，自动匹配路线上在等确认的那一关',
+    },
   },
   run: (p, { out }) => {
     const confirm: { said: string; gate?: string } = { said: str(p.said).trim() };
@@ -103,7 +111,11 @@ gate 一般不写，记的是路线上此刻在等确认的那一关；要指定
       out.write('当前不在客户端的对话里，没有路线可记，已跳过。\n');
       return { data: { recorded: false } };
     }
-    out.write('已请客户端记下这道关卡的确认（原话：「' + confirm.said + '」）；原话对不上这一轮用户的话时客户端不会记，并在对话里说明。\n');
+    out.write(
+      '已请客户端记下这道关卡的确认（原话：「' +
+        confirm.said +
+        '」）；原话对不上这一轮用户的话时客户端不会记，并在对话里说明。\n',
+    );
     return { data: { requested: true, said: confirm.said, gate: confirm.gate ?? '' } };
   },
 });
@@ -114,7 +126,8 @@ function stepHelp(): string {
     .steps()
     .map((st) => {
       const colon = st.hint.indexOf('：');
-      const hint = st.flow && colon >= 0 ? `${st.hint.slice(0, colon)}（只有${st.flow}项目）${st.hint.slice(colon)}` : st.hint;
+      const hint =
+        st.flow && colon >= 0 ? `${st.hint.slice(0, colon)}（只有${st.flow}项目）${st.hint.slice(colon)}` : st.hint;
       return `  ${st.id.padEnd(11)} ${hint}`;
     })
     .join('\n');
@@ -125,7 +138,8 @@ defineOp({
   name: 'studio_step',
   cli: ['studio', 'step'],
   summary: '在客户端顶栏标出整片制作现在处在哪一步（每一轮结束前调用）',
-  description: `每一轮结束前（汇报、停下来等用户之前）调用，标出整片制作现在处在哪一步，客户端顶栏的那一步会标成「进行中」。
+  description:
+    `每一轮结束前（汇报、停下来等用户之前）调用，标出整片制作现在处在哪一步，客户端顶栏的那一步会标成「进行中」。
 只做标记，不切页；要用户看某一页用 studio_show。
 
 不在客户端的对话里调用时什么都不做，也不算失败。
@@ -144,7 +158,11 @@ defineOp({
       out.write('当前不在客户端的对话里，没有界面可标，已跳过。\n');
       return { data: { marked: false } };
     }
-    out.write('已在客户端顶栏标出：现在在「' + (studioview.steps().find((st) => st.id === req.step)?.label ?? req.step) + '」这一步。\n');
+    out.write(
+      '已在客户端顶栏标出：现在在「' +
+        (studioview.steps().find((st) => st.id === req.step)?.label ?? req.step) +
+        '」这一步。\n',
+    );
     return { data: { marked: true, step: req.step } };
   },
 });
@@ -182,26 +200,36 @@ permissions/ 子目录，客户端在输入框上方弹卡片问用户，答复�
 function newToolsMCPCommand(): Command {
   const profile = ref('orchestrator');
   const workdir = ref('');
+  const compact = ref(false);
+  const full = ref(false);
   const cmd = new Command({
     use: 'tools-mcp',
     hidden: true,
     short: '客户端内部用：onset 的工具服务（MCP，stdio）',
-    long: `把 onset 的每条命令做成一个 MCP 工具，给客户端里的编排工具（--profile orchestrator，全部工具）与
+    long: `把 onset 的每条命令做成一个 MCP 工具，给客户端里的编排工具（--profile orchestrator，默认静态紧凑模式）与
 镜头渲染器（--profile renderer，只有 hyperframes）用。每次调用起一个 onset 子进程执行，最多等 wait_seconds，
 没跑完返回任务号，用 job_wait 接着等。stdin / stdout 是 MCP 的 JSON-RPC，每行一条。`,
     example: `  # 客户端写进编排工具 MCP 配置里的就是这一条，由编排工具启动：
   onset studio tools-mcp --profile orchestrator --workdir /path/to/project`,
     runE: async (c) => {
-      if (profile.value !== 'orchestrator' && profile.value !== 'renderer') throw new Error(`--profile 只认 orchestrator 或 renderer，收到 ${profile.value}`);
+      if (profile.value !== 'orchestrator' && profile.value !== 'renderer')
+        throw new Error(`--profile 只认 orchestrator 或 renderer，收到 ${profile.value}`);
       // 工作目录显式给：各家 agent 启动 MCP 服务时用哪个目录不一，相对路径（scenes/…）要对着项目或镜头目录解析。
       if (workdir.value !== '') process.chdir(workdir.value);
       const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
       // 取消时（SIGTERM）不再等下一行：关掉输入，服务循环结束、停掉全部任务后退出。
       c.context().addEventListener('abort', () => rl.close(), { once: true });
-      await serveToolsMCP(rl, (line) => process.stdout.write(line), profile.value as Profile, undefined, c.context());
+      const useCompact = full.value ? false : compact.value ? true : compactModeEnabled();
+      await serveToolsMCP(rl, (line) => process.stdout.write(line), profile.value as Profile, undefined, c.context(), {
+        compact: useCompact,
+      });
     },
   });
-  cmd.flags().stringVar(profile, 'profile', 'orchestrator', '工具档位：orchestrator（全部）或 renderer（只有 hyperframes）');
+  cmd
+    .flags()
+    .stringVar(profile, 'profile', 'orchestrator', '工具档位：orchestrator（编排）或 renderer（只有 hyperframes）');
   cmd.flags().stringVar(workdir, 'workdir', '', '工具在哪个目录里执行（编排工具是项目根，渲染器是镜头目录）');
+  cmd.flags().boolVar(compact, 'compact', false, '显式启用紧凑模式（编排档位默认开启）');
+  cmd.flags().boolVar(full, 'full', false, '应急退回全量模式：编排档位展开全部工具完整 schema');
   return cmd;
 }

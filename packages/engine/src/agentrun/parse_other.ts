@@ -14,6 +14,7 @@ import {
   rawJSON,
   str,
   toolResultText,
+  unwrapOnsetToolCall,
 } from './parse_types';
 
 /** 处理 opencode run --format json 的 JSONL（2.x）。 */
@@ -36,8 +37,8 @@ export function parseOpencode(e: Obj): Event[] {
     case 'tool_use': {
       const state = obj(part.state);
       const callID = str(part.id);
-      const tool = str(part.tool);
-      events.push({ kind: KindToolCall, tool, call_id: callID, input: rawJSON(state.input) });
+      const { tool, input } = unwrapOnsetToolCall(str(part.tool), state.input);
+      events.push({ kind: KindToolCall, tool, call_id: callID, input: rawJSON(input) });
       if (tool === 'todowrite') {
         const plan = planFromTodos(state.input);
         if (plan.length > 0) events.push({ kind: KindPlan, plan });
@@ -73,7 +74,7 @@ const McodeToolFailed = 3;
  * reasoning、agent_message、tool_call。思考与正文在 item.updated 里一小段一小段推（contentDelta），完成时 item.completed
  * 带全文（content），这里只认完成的那条：统一事件是消息级的。待办工具是 todowrite（与 opencode 同形）。
  */
-export function parseMcode(e: Obj, emitted: Set<string>): Event[] {
+export function parseMcode(e: Obj, emitted: Map<string, string>): Event[] {
   const events: Event[] = [];
   const id = str(e.sessionId);
   if (id !== '') events.push({ kind: KindSession, session_id: id });
@@ -93,12 +94,14 @@ export function parseMcode(e: Obj, emitted: Set<string>): Event[] {
       } else if (itemType === 'tool_call') {
         const call = obj(item.toolCall);
         const callID = str(call.id) || str(item.id);
-        const tool = str(call.name);
+        const rawTool = str(call.name);
         const hasInput = call.input !== undefined && call.input !== null;
+        const unwrapped = hasInput ? unwrapOnsetToolCall(rawTool, call.input) : { tool: rawTool, input: call.input };
+        const tool = emitted.get(callID) ?? unwrapped.tool;
         if (hasInput && !emitted.has(callID)) {
-          emitted.add(callID);
-          events.push({ kind: KindToolCall, tool, call_id: callID, input: rawJSON(call.input) });
-          if (tool === 'todowrite') {
+          emitted.set(callID, unwrapped.tool);
+          events.push({ kind: KindToolCall, tool: unwrapped.tool, call_id: callID, input: rawJSON(unwrapped.input) });
+          if (unwrapped.tool === 'todowrite') {
             const plan = planFromTodos(call.input);
             if (plan.length > 0) events.push({ kind: KindPlan, plan });
           }
@@ -138,17 +141,23 @@ export function parseMcode(e: Obj, emitted: Set<string>): Event[] {
   return events;
 }
 
-/** 把 Antigravity CLI 的 MCP 工具名规范成全仓库统一的 mcp__<服务>__<工具> 写法。 */
+/** 把 Antigravity CLI 与 ACP 的 MCP 工具名规范成全仓库统一的 mcp__<服务>__<工具> 写法，并把 tool_call / onset_call 拆回真实操作名。 */
 export function normalizeAgyTool(name: string, input: unknown): { tool: string; input: unknown } {
+  let tool = name;
+  let args = input;
   if (name === 'call_mcp_tool') {
     const o = obj(input);
     const server = str(o.ServerName);
     const toolName = str(o.ToolName);
-    if (server !== '' && toolName !== '') return { tool: `mcp__${server}__${toolName}`, input: o.Arguments ?? {} };
+    if (server !== '' && toolName !== '') {
+      tool = `mcp__${server}__${toolName}`;
+      args = o.Arguments ?? {};
+    }
+  } else {
+    const eager = /^mcp_onset_(.+)$/.exec(name);
+    if (eager) tool = `mcp__onset__${eager[1]}`;
   }
-  const eager = /^mcp_onset_(.+)$/.exec(name);
-  if (eager) return { tool: `mcp__onset__${eager[1]}`, input };
-  return { tool: name, input };
+  return unwrapOnsetToolCall(tool, args);
 }
 
 /**

@@ -4,7 +4,7 @@ import path from 'node:path';
 import * as flow from '@onset/engine/flow';
 import { afterEach, describe, expect, it } from 'vitest';
 import { execute } from './cli';
-import { describeTools } from './toolsmcp';
+import { describeToolCatalog, describeTools } from './toolsmcp';
 
 const temps: string[] = [];
 const savedStationsDir = process.env[flow.StationsDirEnv];
@@ -42,7 +42,7 @@ async function runCLI(args: string[]): Promise<{ code: number; stdout: string; s
 
 describe('motion_effect_* operations', () => {
   it('exposes motion_effect_list and motion_effect_show as instant orchestrator tools', () => {
-    const tools = describeTools('orchestrator');
+    const tools = describeToolCatalog('orchestrator').all;
     for (const name of ['motion_effect_list', 'motion_effect_show']) {
       const tool = tools.find((t) => t.name === name);
       expect(tool, `缺少工具 ${name}`).toBeDefined();

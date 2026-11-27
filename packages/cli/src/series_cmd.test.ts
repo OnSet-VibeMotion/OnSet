@@ -6,7 +6,7 @@ import './cli';
 import { findOp, normalizeToolParams, TextSink } from './ops/op';
 import { runOpWorker } from './ops/worker';
 import { runIn, tempDir } from './testutil';
-import { describeTools, opCommand, prepareCall } from './toolsmcp';
+import { describeToolCatalog, opCommand, prepareCall } from './toolsmcp';
 
 describe('CLI / MCP series operations', () => {
   it('runs series_info, series_promote_asset, series_sync_asset, series_update_brief, and series_update_publish_template', async () => {
@@ -82,7 +82,7 @@ describe('CLI / MCP series operations', () => {
       expect(afterClear?.description_footer).toBeUndefined();
 
       // 回归（MCP 跨进程路径）：prepareCall -> opCommand -> runOpWorker 不得把未传字段的默认值误判为显式清空
-      const mcpTool = describeTools('orchestrator').find((t) => t.name === 'series_update_publish_template')!;
+      const mcpTool = describeToolCatalog('orchestrator').all.find((t) => t.name === 'series_update_publish_template')!;
       const runViaMCP = async (input: Record<string, unknown>) => {
         const prepared = prepareCall(mcpTool, input);
         const cmd = opCommand(mcpTool.name, prepared);

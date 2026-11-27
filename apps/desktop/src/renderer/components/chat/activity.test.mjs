@@ -1,14 +1,17 @@
 // 进度卡片怎么说、什么时候显示：纯函数，不开客户端（原来写在 e2e/chat-progress.spec.mjs 里）。
 import { expect, test } from 'vitest';
-import { buildBlocks } from './model.ts';
 import { showProgressCard, suggestStop, turnActivity, waitingOnRender } from './activity.ts';
+import { buildBlocks } from './model.ts';
 
 const start = Date.parse('2026-11-15T00:00:00Z');
 function activity(rows, now = start + 70000, asks = []) {
   const events = [{ kind: 'turn-start' }, ...rows].map((event, seq) => ({
-    seq, turn_id: 'current', time: new Date(start + seq * 1000).toISOString(), ...event,
+    seq,
+    turn_id: 'current',
+    time: new Date(start + seq * 1000).toISOString(),
+    ...event,
   }));
-  const turn = buildBlocks(events).find(block => block.kind === 'turn');
+  const turn = buildBlocks(events).find((block) => block.kind === 'turn');
   return turnActivity(turn, events, asks, now);
 }
 const read = { kind: 'tool-call', call_id: 'read', tool: 'Read', input: { file_path: 'scenes/scene-010/prompt.md' } };
@@ -17,13 +20,19 @@ const done = { kind: 'tool-result', call_id: 'read', text: 'done' };
 test('compaction stays visible during silence and only confirmed boundaries say completed', () => {
   const compact = { kind: 'context-compaction', compaction: { state: 'running' }, text: '正在压缩上下文' };
   expect(activity([read, done, compact, { kind: 'notice', text: '状态更新' }], start + 180000)).toMatchObject({
-    phase: 'compacting', label: '正在压缩上下文', since: new Date(start + 3000).toISOString(), quiet: true,
+    phase: 'compacting',
+    label: '正在压缩上下文',
+    since: new Date(start + 3000).toISOString(),
+    quiet: true,
   });
   const completed = { ...compact, compaction: { state: 'completed', pre_tokens: 150000, post_tokens: 20000 } };
   expect(activity([compact, completed])).toMatchObject({ phase: 'waiting', label: '上下文压缩完成，等待模型回复' });
   expect(activity([compact, completed]).detail).toContain('150,000 → 20,000');
   expect(activity([compact, { ...compact, compaction: { state: 'ended' } }]).label).toBe('等待模型回复');
-  for (const [state, label] of [['failed', '上下文压缩失败'], ['cancelled', '上下文压缩已取消']]) {
+  for (const [state, label] of [
+    ['failed', '上下文压缩失败'],
+    ['cancelled', '上下文压缩已取消'],
+  ]) {
     const ended = { ...compact, compaction: { state } };
     expect(activity([compact, ended]).label).toContain(label);
     expect(activity([compact, ended, read]).phase).toBe('tool');
@@ -33,10 +42,19 @@ test('compaction stays visible during silence and only confirmed boundaries say 
 });
 
 test('completed tools transition to model waiting with an honest last-update time', () => {
-  expect(activity([read, done])).toMatchObject({ phase: 'waiting', label: '等待模型回复', completed: 1, failed: 0, quiet: true,
-    since: new Date(start + 2000).toISOString(), lastUpdate: new Date(start + 2000).toISOString() });
+  expect(activity([read, done])).toMatchObject({
+    phase: 'waiting',
+    label: '等待模型回复',
+    completed: 1,
+    failed: 0,
+    quiet: true,
+    since: new Date(start + 2000).toISOString(),
+    lastUpdate: new Date(start + 2000).toISOString(),
+  });
   expect(activity([read, done]).detail).toContain('scenes/scene-010/prompt.md');
-  expect(activity([read, done, { kind: 'queued', text: '补充要求' }]).lastUpdate).toBe(new Date(start + 2000).toISOString());
+  expect(activity([read, done, { kind: 'queued', text: '补充要求' }]).lastUpdate).toBe(
+    new Date(start + 2000).toISOString(),
+  );
 });
 
 test('a parallel tool finishing does not hide the earlier running operation', () => {
@@ -48,7 +66,30 @@ test('a parallel tool finishing does not hide the earlier running operation', ()
 test('approval, background work and streamed output have distinct progress states', () => {
   expect(activity([]).phase).toBe('starting');
   expect(activity([read], undefined, [{ id: 'approval' }]).phase).toBe('permission');
-  expect(activity([{ kind: 'background-tasks', background_tasks: [{ id: 'bg', description: '生成配音' }] }]).phase).toBe('background');
+  const qEvents = [{ kind: 'turn-start' }, read].map((event, seq) => ({
+    seq,
+    turn_id: 'current',
+    time: new Date(start + seq * 1000).toISOString(),
+    ...event,
+  }));
+  const qTurn = buildBlocks(qEvents).find((block) => block.kind === 'turn');
+  const qState = turnActivity(qTurn, qEvents, [], start + 70000, [
+    { id: 'q1', title: '确认规格', questions: [{ id: 'a', question: 'Q', options: [{ label: '1' }, { label: '2' }] }] },
+  ]);
+  expect(qState).toMatchObject({ phase: 'question', label: '等待你回答问题', detail: '确认规格' });
+  expect(suggestStop(qState)).toBe(false);
+  const deferredQState = turnActivity(qTurn, qEvents, [], start + 70000, [
+    {
+      id: 'q-def',
+      title: '旧回合遗留问题',
+      deferred: true,
+      questions: [{ id: 'a', question: 'Q', options: [{ label: '1' }, { label: '2' }] }],
+    },
+  ]);
+  expect(deferredQState).toMatchObject({ phase: 'tool', label: '正在执行操作' });
+  expect(
+    activity([{ kind: 'background-tasks', background_tasks: [{ id: 'bg', description: '生成配音' }] }]).phase,
+  ).toBe('background');
   expect(activity([{ kind: 'thinking', text: 'checking', text_id: 't' }], start + 2000).phase).toBe('thinking');
   expect(activity([{ kind: 'text', text: '正在整理' }], start + 2000).phase).toBe('replying');
   expect(activity([{ kind: 'thinking', text: 'checking' }]).phase).toBe('waiting');
@@ -60,8 +101,13 @@ test('approval, background work and streamed output have distinct progress state
 
 test('waiting on scene rendering leaves progress to the render board', () => {
   const turnOf = (rows) => {
-    const events = [{ kind: 'turn-start' }, ...rows].map((event, seq) => ({ seq, turn_id: 'current', time: new Date(start + seq * 1000).toISOString(), ...event }));
-    const turn = buildBlocks(events).find(block => block.kind === 'turn');
+    const events = [{ kind: 'turn-start' }, ...rows].map((event, seq) => ({
+      seq,
+      turn_id: 'current',
+      time: new Date(start + seq * 1000).toISOString(),
+      ...event,
+    }));
+    const turn = buildBlocks(events).find((block) => block.kind === 'turn');
     return { turn, state: turnActivity(turn, events, [], start + 70000) };
   };
   const call = (id, tool, input = {}) => ({ kind: 'tool-call', call_id: id, tool, input });
@@ -79,8 +125,13 @@ test('waiting on scene rendering leaves progress to the render board', () => {
   const other = turnOf([call('c', 'mcp__onset__concat')]);
   expect(waitingOnRender(other.state, other.turn, 2)).toBe(false);
   // 等批准不是在等渲染。
-  const events = [{ kind: 'turn-start' }, call('r', 'scene_run')].map((event, seq) => ({ seq, turn_id: 'current', time: new Date(start + seq * 1000).toISOString(), ...event }));
-  const turn = buildBlocks(events).find(block => block.kind === 'turn');
+  const events = [{ kind: 'turn-start' }, call('r', 'scene_run')].map((event, seq) => ({
+    seq,
+    turn_id: 'current',
+    time: new Date(start + seq * 1000).toISOString(),
+    ...event,
+  }));
+  const turn = buildBlocks(events).find((block) => block.kind === 'turn');
   expect(waitingOnRender(turnActivity(turn, events, [{ id: 'approval' }], start + 70000), turn, 2)).toBe(false);
 });
 
@@ -95,8 +146,11 @@ test('quiet stretches during a running job never suggest stopping', () => {
 });
 
 test('the progress card comes back while the connection is reconnecting, even when waiting on renders', () => {
-  const events = [{ kind: 'turn-start' }, { kind: 'tool-call', call_id: 'r', tool: 'mcp__onset__scene_run_all', input: {} }].map((event, seq) => ({ seq, turn_id: 'current', time: new Date(start + seq * 1000).toISOString(), ...event }));
-  const turn = buildBlocks(events).find(block => block.kind === 'turn');
+  const events = [
+    { kind: 'turn-start' },
+    { kind: 'tool-call', call_id: 'r', tool: 'mcp__onset__scene_run_all', input: {} },
+  ].map((event, seq) => ({ seq, turn_id: 'current', time: new Date(start + seq * 1000).toISOString(), ...event }));
+  const turn = buildBlocks(events).find((block) => block.kind === 'turn');
   const state = turnActivity(turn, events, [], start + 70000);
   expect(showProgressCard(state, turn, 2, false)).toBe(false);
   // 连接断了：卡片照常出来，说清「正在重连」。

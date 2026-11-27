@@ -93,6 +93,11 @@ export const test = base.extend({
       for (const name of ['claude', 'codex', 'opencode']) {
         writeShellFixture(path.join(clientFakeBin, name), fs.readFileSync(path.join(fakeBin, name), 'utf8'));
       }
+      // fake-bin/claude 通过 $(dirname "$0")/../fake-question.mjs 与 fake-permission.mjs 定位辅助脚本。
+      for (const helper of ['fake-question.mjs', 'fake-permission.mjs']) {
+        const src = path.join(here, helper);
+        if (fs.existsSync(src)) fs.copyFileSync(src, path.join(sandbox.root, helper));
+      }
     }
     const env = { ...process.env };
     delete env.ELECTRON_RUN_AS_NODE;

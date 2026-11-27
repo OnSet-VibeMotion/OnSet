@@ -30,6 +30,7 @@ import {
   maxToolOutput,
   obj,
   type PlanItem,
+  unwrapOnsetToolCall,
 } from './parse_types';
 
 export type { BackgroundTask, ContextCompaction, Event, Kind, PlanItem };
@@ -51,6 +52,7 @@ export {
   maxToolOutput,
   normalizeAgyTool,
   TaskBoard,
+  unwrapOnsetToolCall,
 };
 
 /**
@@ -64,7 +66,7 @@ export class Parser {
   private readonly tasks = new TaskBoard();
   private readonly backgroundTasks = new BackgroundTasks();
   private readonly compaction = new CompactionStatus();
-  private readonly mcodeCalls = new Set<string>();
+  private readonly mcodeCalls = new Map<string, string>();
   private readonly agyCalls = new Set<string>();
   private readonly agyText = new Map<number, string>();
 
