@@ -12,9 +12,11 @@ import {
   type ParamSpec,
   type ParamValues,
 } from './ops/op';
+import { compactToolDef, onsetCallToolDef } from './toolsmcp_compact';
 import { defaultWaitSeconds } from './toolsmcp_jobs';
 import {
   allowedForProjectFlow,
+  CompactCoreOps,
   HyperFramesSubcommands,
   instantOps,
   normalizeHyperFramesParams,
@@ -173,9 +175,71 @@ export function callTarget(tool: ToolDef, params: ParamValues): { name: string; 
   };
 }
 
-/** 这一档位的全部工具。root 给了时（编排档位），再加上项目里第三方站的工具。 */
-export function describeTools(profile: Profile, root = ''): ToolDef[] {
-  const out: ToolDef[] = [];
+export interface DescribeToolsOptions {
+  /**
+   * 紧凑模式（编排档位）：仅将核心主链路工具以精简 schema 直出，其余扩展/第三方工具收敛到 onset_call 路由。
+   * 用于避开 Antigravity CLI（agy acp）约 32 KB 的 eager MCP 工具声明上限导致的静默丢弃。
+   */
+  compact?: boolean;
+}
+
+export interface ToolCatalog {
+  /** 经 tools/list 暴露给 MCP 客户端的工具列表。 */
+  exposed: ToolDef[];
+  /** 全量工具表（含经 onset_call 路由的扩展工具），供 tool_help 与调用分发查找。 */
+  all: ToolDef[];
+  /** 紧凑模式下被折叠进 onset_call 的工具名集合。 */
+  routedNames: ReadonlySet<string>;
+}
+
+function controlTools(compact: boolean): ToolDef[] {
+  return [
+    {
+      name: 'job_wait',
+      description: compact
+        ? '接着等未完成任务（省略 wait_seconds 等满上限，勿短轮询）'
+        : '接着等一个还没跑完的任务（上一次调用返回的任务号），返回它的新输出；跑完时给出结果。等渲染等长任务时直接省略 wait_seconds（一次等满上限），不要每隔几十秒短轮询，也不要在等待期间反复读 render-*.user.log。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          job: { type: 'string', description: '任务号' },
+          wait_seconds: compact ? { type: 'number' } : waitSchema('job_wait'),
+        },
+        required: ['job'],
+        additionalProperties: false,
+      },
+      help: '',
+    },
+    {
+      name: 'job_cancel',
+      description: '停掉一个还没跑完的任务。',
+      inputSchema: {
+        type: 'object',
+        properties: { job: { type: 'string', description: '任务号' } },
+        required: ['job'],
+        additionalProperties: false,
+      },
+      help: '',
+    },
+    {
+      name: 'tool_help',
+      description: compact
+        ? '查任意工具（含 onset_call 扩展工具）的完整说明与参数；传 "*" 列全表'
+        : '查一个工具的完整说明、参数与例子（参数怎么填、产出什么、和其他步骤的关系）。',
+      inputSchema: {
+        type: 'object',
+        properties: { tool: { type: 'string', description: compact ? '工具名或 "*"' : '工具名' } },
+        required: ['tool'],
+        additionalProperties: false,
+      },
+      help: '',
+    },
+  ];
+}
+
+/** 这一档位的工具目录：返回 tools/list 暴露的工具、全量工具与被路由进 onset_call 的集合。 */
+export function describeToolCatalog(profile: Profile, root = '', options: DescribeToolsOptions = {}): ToolCatalog {
+  const ops: ToolDef[] = [];
   const extras = profile === 'orchestrator' && root !== '' ? externalOps() : [];
   const entries = [...allOps().map((op) => ({ op, external: undefined as ToolDef['external'] })), ...extras];
   for (const { op, external } of entries) {
@@ -208,7 +272,7 @@ export function describeTools(profile: Profile, root = ''): ToolDef[] {
       if (spec.required) required.push(key);
     }
     if (external || !instantOps.has(op.name)) properties.wait_seconds = waitSchema(op.name);
-    out.push({
+    ops.push({
       name: op.name,
       profile,
       // 列表里只放一句话：全部工具的完整说明有好几万字，每次请求都塞进 agent 的上下文太浪费。
@@ -225,7 +289,7 @@ export function describeTools(profile: Profile, root = ''): ToolDef[] {
     });
   }
   if (profile === 'orchestrator') {
-    out.push({
+    ops.push({
       name: StudioAskToolName,
       profile,
       description: studioAskDescription,
@@ -233,44 +297,30 @@ export function describeTools(profile: Profile, root = ''): ToolDef[] {
       help: studioAskHelp,
     });
   }
-  out.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  out.push(
-    {
-      name: 'job_wait',
-      description:
-        '接着等一个还没跑完的任务（上一次调用返回的任务号），返回它的新输出；跑完时给出结果。等渲染等长任务时直接省略 wait_seconds（一次等满上限），不要每隔几十秒短轮询，也不要在等待期间反复读 render-*.user.log。',
-      inputSchema: {
-        type: 'object',
-        properties: { job: { type: 'string', description: '任务号' }, wait_seconds: waitSchema('job_wait') },
-        required: ['job'],
-        additionalProperties: false,
-      },
-      help: '',
-    },
-    {
-      name: 'job_cancel',
-      description: '停掉一个还没跑完的任务。',
-      inputSchema: {
-        type: 'object',
-        properties: { job: { type: 'string', description: '任务号' } },
-        required: ['job'],
-        additionalProperties: false,
-      },
-      help: '',
-    },
-    {
-      name: 'tool_help',
-      description: '查一个工具的完整说明、参数与例子（参数怎么填、产出什么、和其他步骤的关系）。',
-      inputSchema: {
-        type: 'object',
-        properties: { tool: { type: 'string', description: '工具名' } },
-        required: ['tool'],
-        additionalProperties: false,
-      },
-      help: '',
-    },
-  );
-  return out;
+  ops.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const compact = options.compact === true && profile === 'orchestrator';
+  const controls = controlTools(compact);
+  if (!compact) {
+    const all = [...ops, ...controls];
+    return { exposed: all, all, routedNames: new Set() };
+  }
+  const direct: ToolDef[] = [];
+  const routed: ToolDef[] = [];
+  for (const tool of ops) {
+    if (!tool.external && CompactCoreOps.has(tool.name)) direct.push(compactToolDef(tool));
+    else routed.push(tool);
+  }
+  const callTool = onsetCallToolDef(routed);
+  return {
+    exposed: [...direct, callTool, ...controls],
+    all: [...ops, callTool, ...controls],
+    routedNames: new Set(routed.map((t) => t.name)),
+  };
+}
+
+/** 这一档位的全部工具。root 给了时（编排档位），再加上项目里第三方站的工具。 */
+export function describeTools(profile: Profile, root = '', options: DescribeToolsOptions = {}): ToolDef[] {
+  return describeToolCatalog(profile, root, options).exposed;
 }
 
 /**

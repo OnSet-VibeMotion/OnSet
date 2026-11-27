@@ -50,6 +50,9 @@ export interface McpServer {
 /** 工具服务一次调用最多能等多久（秒），由起它的一方按客户端的超时定（toolsmcp 读它，缺省 600）。 */
 export const ToolsMaxWaitEnv = 'ONSET_TOOLS_MAX_WAIT';
 
+/** 编排工具服务紧凑模式开关：直出核心主链路，其余扩展工具经 onset_call 路由（避开 agy ACP 约 32 KB 工具声明上限）。 */
+export const ToolsCompactEnv = 'ONSET_TOOLS_COMPACT';
+
 /**
  * 给能长时间等一次工具调用的客户端（claude、codex）放宽的等待上限：50 分钟。
  *
@@ -247,6 +250,9 @@ export function agyMcpJSON(server: McpServer): string {
   const timeout = longWaitTimeoutSeconds({ ...server, env }) || 720;
   const isRenderer =
     server.args.includes('tools-mcp') && server.args[server.args.indexOf('--profile') + 1] === 'renderer';
+  if (server.name === ToolsServerName && !isRenderer && !env[ToolsCompactEnv]) {
+    env[ToolsCompactEnv] = '1';
+  }
   const entry: Record<string, unknown> = {
     command: server.command,
     args: server.args,

@@ -34,6 +34,7 @@ import type { Outcome, Spec } from './run';
 
 export {
   ACPTranslator,
+  acpMcpServers,
   acpModel,
   acpOutcome,
   acpPermissionTool,
