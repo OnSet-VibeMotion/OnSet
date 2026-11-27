@@ -7,6 +7,79 @@ import type { ParamValues } from './ops/op';
 /** 档位：编排工具使用制作工具，渲染器只拿镜头内的工具。 */
 export type Profile = 'orchestrator' | 'renderer';
 
+/** 环境变量开关：开启后编排档位进入紧凑模式（直出核心主链路 + onset_call 泛化路由），适配 agy ACP 约 32 KB 的 MCP 声明预算。 */
+export const ToolsCompactEnv = 'ONSET_TOOLS_COMPACT';
+
+/** 紧凑模式下的通用路由工具名：用于调用未直出的扩展/低频/第三方站操作。 */
+export const OnsetCallToolName = 'onset_call';
+
+/** 读取环境变量判断是否开启紧凑模式。 */
+export function compactModeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = (env[ToolsCompactEnv] ?? '').trim().toLowerCase();
+  return raw === '1' || raw === 'true';
+}
+
+/**
+ * 紧凑模式下编排档位直接暴露的核心主链路工具：
+ * 覆盖口播/卡点/歌曲三条主流程从配音对齐、时间轴推算、批量渲染、抽帧验收、拼接复查到 Studio 交互的全部核心步骤。
+ * 其余扩展/低频/第三方站操作统一通过 onset_call 路由调用，tool_help 对全量工具均可用。
+ */
+export const CompactCoreOps: ReadonlySet<string> = new Set([
+  // 配音、强制对齐、音频校验与时长报告（口播主链路）
+  'voice_synthesize',
+  'align_text',
+  'align_run',
+  'align_build',
+  'audio_check',
+  'audio_mix',
+  'timing_report',
+  'phrase_frames',
+  // 卡点主链路（按 onset.flow.json 动态过滤）
+  'beat_import',
+  'beat_analyze',
+  'beat_regrid',
+  'beat_confirm',
+  'beat_cues',
+  'beat_click',
+  'validate_beat',
+  // 歌曲主链路（按 onset.flow.json 动态过滤）
+  'song_configure',
+  'song_generate',
+  'song_import',
+  'song_select',
+  'song_prepare',
+  'song_cues',
+  'song_mux',
+  'song_handoff',
+  'song_receive',
+  'validate_song',
+  // 分镜、并发批量渲染与验收
+  'scene_cues',
+  'scene_prepare',
+  'scene_run',
+  'scene_run_all',
+  'scene_frames_batch',
+  'scene_frames',
+  'scene_seams',
+  'validate_reads',
+  // 成片拼接、解码校验、复查与发布校验
+  'concat',
+  'validate_video',
+  'review',
+  'validate_publish',
+  // 风格、配置、输入清单、只读检查与客户端交互
+  'film_style_list',
+  'film_style_use',
+  'config_get',
+  'flow_guide',
+  'inputs_manifest',
+  'hyperframes',
+  'studio_show',
+  'studio_step',
+  'studio_confirm',
+  'studio_ask',
+]);
+
 /** hyperframes 工具放行的子命令：本机渲染与只读检查。远端渲染、改动已装技能、交互与遥测命令一律不给。 */
 export const HyperFramesSubcommands = [
   'lint',

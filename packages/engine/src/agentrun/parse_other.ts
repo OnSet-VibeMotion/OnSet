@@ -138,13 +138,28 @@ export function parseMcode(e: Obj, emitted: Set<string>): Event[] {
   return events;
 }
 
-/** 把 Antigravity CLI 的 MCP 工具名规范成全仓库统一的 mcp__<服务>__<工具> 写法。 */
+/** 把 Antigravity CLI 的 MCP 工具名规范成全仓库统一的 mcp__<服务>__<工具> 写法，并把 onset_call 拆回真实操作名。 */
 export function normalizeAgyTool(name: string, input: unknown): { tool: string; input: unknown } {
   if (name === 'call_mcp_tool') {
     const o = obj(input);
     const server = str(o.ServerName);
     const toolName = str(o.ToolName);
     if (server !== '' && toolName !== '') return { tool: `mcp__${server}__${toolName}`, input: o.Arguments ?? {} };
+  }
+  if (name === 'mcp_onset_onset_call' || name === 'onset_call') {
+    const o = obj(input);
+    const toolName = str(o.tool);
+    if (toolName !== '') {
+      let args: unknown = o.arguments ?? {};
+      if (typeof args === 'string') {
+        try {
+          args = JSON.parse(args);
+        } catch {
+          // 非法 JSON 保留原值供界面显示。
+        }
+      }
+      return { tool: `mcp__onset__${toolName}`, input: args };
+    }
   }
   const eager = /^mcp_onset_(.+)$/.exec(name);
   if (eager) return { tool: `mcp__onset__${eager[1]}`, input };

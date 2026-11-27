@@ -24,18 +24,40 @@ import {
   spawnOp,
   spawnOpWithService,
 } from './toolsmcp_jobs';
-import { HyperFramesSubcommands, type Profile } from './toolsmcp_policy';
-import { callTarget, describeTools, externalOps, prepareCall, type ToolDef, ToolsServerName } from './toolsmcp_schema';
+import {
+  CompactCoreOps,
+  compactModeEnabled,
+  HyperFramesSubcommands,
+  OnsetCallToolName,
+  type Profile,
+  ToolsCompactEnv,
+} from './toolsmcp_policy';
+import {
+  callTarget,
+  type DescribeToolsOptions,
+  describeToolCatalog,
+  describeTools,
+  externalOps,
+  prepareCall,
+  type ToolCatalog,
+  type ToolDef,
+  ToolsServerName,
+} from './toolsmcp_schema';
 
 export {
+  CompactCoreOps,
   callTarget,
+  compactModeEnabled,
   DefaultWaitSeconds,
+  type DescribeToolsOptions,
   defaultWaitSeconds,
+  describeToolCatalog,
   describeTools,
   externalOps,
   HyperFramesSubcommands,
   Jobs,
   maxWaitSeconds,
+  OnsetCallToolName,
   opCommand,
   type Profile,
   prepareCall,
@@ -43,10 +65,48 @@ export {
   type Spawner,
   spawnOp,
   spawnOpWithService,
+  type ToolCatalog,
   type ToolDef,
+  ToolsCompactEnv,
   ToolsServerName,
   toolOutputArchiveDir,
 };
+
+/** 列出全量可用工具索引，供 tool_help({"tool": "*"}) 返回。 */
+function formatToolIndex(catalog: ToolCatalog): string {
+  const direct = catalog.all.filter((t) => t.op && !catalog.routedNames.has(t.name));
+  const routed = catalog.all.filter((t) => t.op && catalog.routedNames.has(t.name));
+  const sections: string[] = [];
+  if (direct.length > 0) {
+    sections.push('直接调用的核心工具：\n' + direct.map((t) => `  ${t.name}：${t.description}`).join('\n'));
+  }
+  if (routed.length > 0) {
+    sections.push(
+      `经 ${OnsetCallToolName}({"tool": "<名>", "arguments": {...}}) 调用的扩展工具：\n` +
+        routed.map((t) => `  ${t.name}：${t.description}`).join('\n'),
+    );
+  }
+  return sections.join('\n\n');
+}
+
+/** 解析 onset_call 传入的 arguments（兼容对象或 JSON 字符串）。 */
+function parseRoutedArguments(raw: unknown): ParamValues {
+  if (raw === undefined || raw === null || raw === '') return {};
+  if (typeof raw === 'string') {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error('onset_call 的参数 arguments 不是合法 JSON 对象');
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('onset_call 的参数 arguments 要是 JSON 对象');
+    }
+    return parsed as ParamValues;
+  }
+  if (typeof raw === 'object' && !Array.isArray(raw)) return raw as ParamValues;
+  throw new Error('onset_call 的参数 arguments 要是对象');
+}
 
 // ---------------------------------------------------------------- MCP
 
@@ -60,11 +120,14 @@ export async function serveToolsMCP(
   profile: Profile,
   spawner: Spawner = spawnOp,
   signal?: AbortSignal,
+  options?: DescribeToolsOptions,
 ): Promise<void> {
   const send = (msg: Record<string, unknown>): void => write(JSON.stringify({ jsonrpc: '2.0', ...msg }) + '\n');
+  const compact = options?.compact ?? compactModeEnabled();
   // 工作目录就是项目根（编排档位）：已装的第三方插件各自的工具一起登记。
-  const tools = describeTools(profile, process.cwd());
-  const byName = new Map(tools.map((t) => [t.name, t]));
+  const catalog = describeToolCatalog(profile, process.cwd(), { compact });
+  const tools = catalog.exposed;
+  const allByName = new Map(catalog.all.map((t) => [t.name, t]));
   const jobs = new Jobs(spawner);
   const recentSceneRuns: number[] = [];
   const sceneRunWindowMs = 10 * 60 * 1000;
@@ -95,6 +158,9 @@ export async function serveToolsMCP(
               serverInfo: { name: ToolsServerName, version: '1' },
               instructions:
                 '片场的制作工具，每个工具对应一条制作步骤。参数怎么填、产出什么用 tool_help 查。' +
+                (compact && profile === 'orchestrator'
+                  ? `紧凑模式下核心主链路工具直接暴露，其余扩展工具经 ${OnsetCallToolName}({"tool": "<名>", "arguments": {...}}) 调用，全部工具可用 tool_help({"tool": "*"}) 列出。`
+                  : '') +
                 '每次调用可指定 wait_seconds；没跑完时用返回的任务号调用 job_wait 接着等，job_cancel 停掉。' +
                 '结果里「结果：」那一行是结构化的 JSON。onset 不在终端里，不要去找它。',
             },
@@ -154,15 +220,48 @@ export async function serveToolsMCP(
               return reply(result);
             }
             if (name === 'tool_help') {
-              const target = byName.get(String(input.tool ?? ''));
-              if (!target) return reply({ text: `没有这个工具：${String(input.tool ?? '')}`, isError: true });
-              return reply({ text: target.help || target.description, isError: false });
+              const query = String(input.tool ?? '').trim();
+              if (query === '' || query === '*' || query === 'list') {
+                return reply({ text: formatToolIndex(catalog), isError: false });
+              }
+              const target = allByName.get(query);
+              if (!target) return reply({ text: `没有这个工具：${query}`, isError: true });
+              const body = target.help || target.description;
+              const routeNote = catalog.routedNames.has(target.name)
+                ? `\n\n调用方式：经 ${OnsetCallToolName}({"tool": ${JSON.stringify(target.name)}, "arguments": {...}}) 调用。`
+                : '';
+              return reply({ text: body + routeNote, isError: false });
             }
-            const tool = byName.get(name);
-            if (!tool?.op) return reply({ text: `没有这个工具：${name}`, isError: true });
+            let opName = name;
+            let opInput = input;
+            let waitSeconds = seconds;
+            if (name === OnsetCallToolName) {
+              opName = String(input.tool ?? '').trim();
+              if (opName === '') return reply({ text: `${OnsetCallToolName} 缺少参数 tool`, isError: true });
+              if (
+                opName === 'job_wait' ||
+                opName === 'job_cancel' ||
+                opName === 'tool_help' ||
+                opName === OnsetCallToolName
+              ) {
+                return reply({ text: `请直接调用 ${opName}，不要经 ${OnsetCallToolName} 转发`, isError: true });
+              }
+              try {
+                opInput = parseRoutedArguments(input.arguments);
+              } catch (err) {
+                return reply({ text: (err as Error).message, isError: true });
+              }
+              waitSeconds = explicitWait
+                ? (input.wait_seconds as number)
+                : typeof opInput.wait_seconds === 'number'
+                  ? (opInput.wait_seconds as number)
+                  : defaultWaitSeconds(opName);
+            }
+            const tool = allByName.get(opName);
+            if (!tool?.op) return reply({ text: `没有这个工具：${opName}`, isError: true });
             let params: ParamValues;
             try {
-              params = prepareCall(tool, input);
+              params = prepareCall(tool, opInput);
             } catch (err) {
               return reply({ text: (err as Error).message, isError: true });
             }
@@ -179,7 +278,7 @@ export async function serveToolsMCP(
                   '\n[调度提示] 检测到短时间内多次单独调用 scene_run。多镜头批量渲染或返修请改用一次 scene_run_all({"scenes":"scenes/","only_scenes":[...],"force":true}) 由片场统一并发调度，可大幅减少 job_wait 轮询与 token 消耗。';
               }
             }
-            const result = await jobs.wait(jobs.start(target.name, target.params), seconds, signal);
+            const result = await jobs.wait(jobs.start(target.name, target.params), waitSeconds, signal);
             reply(batchNudge ? { ...result, text: result.text + batchNudge } : result);
           };
           pending.push(handle());
