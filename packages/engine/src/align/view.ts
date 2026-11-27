@@ -1,7 +1,28 @@
-import { trimLeftSet, trimRightSet, type PhraseSpan, type Script } from './script';
-import type { TimedToken } from './timing';
+import { LabelExact, LabelMerge, LabelSplit, matchTokens } from './match';
+import { round3 } from './phrase';
+import { type PhraseSpan, type Script, type ScriptToken, trimLeftSet, trimRightSet } from './script';
+import { evidenceTokens, locate, type TimedToken } from './timing';
+import { normalizeRunes, runeString, runes, tokenizeRunes } from './token';
 
-export interface CharacterTime { start: number; end: number }
+export interface CharacterTime {
+  start: number;
+  end: number;
+}
+
+export interface DisplayCueInput {
+  text: string;
+  start_seconds: number;
+  end_seconds: number;
+}
+
+export interface DisplayCueAlignment {
+  blocks: ViewBlock[];
+  tokens: number;
+  match_rate: number;
+  interpolated_tokens: number;
+  speech_start_seconds: number;
+  speech_end_seconds: number;
+}
 
 /**
  * ViewBlock 是终稿给人看的一块：标题或一段正文。kind 为 heading 或 para。
@@ -55,7 +76,14 @@ interface Draft {
   timings?: (CharacterTime | null)[];
 }
 
-const draft = (kind: string, fields: Partial<Draft> = {}): Draft => ({ kind, text: '', spoken: '', id: '', children: [], ...fields });
+const draft = (kind: string, fields: Partial<Draft> = {}): Draft => ({
+  kind,
+  text: '',
+  spoken: '',
+  id: '',
+  children: [],
+  ...fields,
+});
 
 function finish(d: Draft): ViewNode {
   const out: ViewNode = { kind: d.kind };
@@ -146,7 +174,8 @@ function viewNodes(s: Script, from: number, to: number, times?: (CharacterTime |
   const nodes = root.children;
   // 段首段尾的空白不显示。
   if (nodes.length > 0 && nodes[0].kind === 'text') {
-    const node = nodes[0], text = trimLeftSet(node.text, ' \t　');
+    const node = nodes[0],
+      text = trimLeftSet(node.text, ' \t　');
     node.timings = node.timings?.slice([...node.text].length - [...text].length);
     node.text = text;
   }
@@ -165,17 +194,108 @@ function pieceTimes(s: Script, timed: TimedToken[]): (CharacterTime | null)[][] 
     if (token.interpolated || token.end <= token.start) continue;
     const count = token.lastPiece - token.firstPiece + 1;
     for (let p = token.firstPiece; p <= token.lastPiece; p++) {
-      const start = token.start + (token.end - token.start) * (p - token.firstPiece) / count;
-      const end = token.start + (token.end - token.start) * (p - token.firstPiece + 1) / count;
-      spans[p] = spans[p] ? { start: Math.min(spans[p]!.start, start), end: Math.max(spans[p]!.end, end) } : { start, end };
+      const start = token.start + ((token.end - token.start) * (p - token.firstPiece)) / count;
+      const end = token.start + ((token.end - token.start) * (p - token.firstPiece + 1)) / count;
+      spans[p] = spans[p]
+        ? { start: Math.min(spans[p]!.start, start), end: Math.max(spans[p]!.end, end) }
+        : { start, end };
     }
   }
   return s.pieces.map((piece, index) => {
     const chars = [...(piece.display || piece.spoken)];
     const span = spans[index];
-    return chars.map((_, i) => span ? {
-      start: span.start + (span.end - span.start) * i / chars.length,
-      end: span.start + (span.end - span.start) * (i + 1) / chars.length,
-    } : null);
+    return chars.map((_, i) =>
+      span
+        ? {
+            start: span.start + ((span.end - span.start) * i) / chars.length,
+            end: span.start + ((span.end - span.start) * (i + 1)) / chars.length,
+          }
+        : null,
+    );
   });
+}
+
+function tokenizeDisplay(s: Script): ScriptToken[] {
+  const tokens: ScriptToken[] = [];
+  for (let start = 0; start < s.pieces.length; ) {
+    let end = start;
+    while (end < s.pieces.length && s.pieces[end].para === s.pieces[start].para) end++;
+    const rs: number[] = [];
+    const owner: number[] = [];
+    for (let p = start; p < end; p++) {
+      if (s.pieces[p].display === '') continue;
+      for (const r of runes(s.pieces[p].display)) {
+        rs.push(r);
+        owner.push(p);
+      }
+    }
+    for (const sp of tokenizeRunes(rs)) {
+      const first = owner[sp.start];
+      const last = owner[sp.end - 1];
+      tokens.push({
+        text: runeString(rs.slice(sp.start, sp.end)),
+        norm: normalizeRunes(rs.slice(sp.start, sp.end)),
+        firstPiece: first,
+        lastPiece: last,
+        line: s.pieces[first].line,
+        col: s.pieces[first].col,
+      });
+    }
+    start = end;
+  }
+  return tokens;
+}
+
+/**
+ * 把句级字幕（显示侧文本 + 起止秒数）匹配回终稿 piece 并生成逐字时间。
+ * 当字级 align.json 缺失但已有 voice.srt 时，供口播稿页保持句级精确同步。
+ */
+export function alignDisplayCues(s: Script, cues: DisplayCueInput[]): DisplayCueAlignment | null {
+  const displayTokens = tokenizeDisplay(s);
+  if (displayTokens.length === 0 || cues.length === 0) return null;
+  const items: { text: string; start: number; end: number; segment: number }[] = [];
+  let prevStart = 0;
+  for (const cue of cues) {
+    if (
+      !Number.isFinite(cue.start_seconds) ||
+      !Number.isFinite(cue.end_seconds) ||
+      cue.start_seconds < 0 ||
+      cue.end_seconds < cue.start_seconds ||
+      cue.start_seconds < prevStart - 0.05
+    ) {
+      return null;
+    }
+    prevStart = cue.start_seconds;
+    if (cue.end_seconds > cue.start_seconds && cue.text.trim() !== '') {
+      items.push({ text: cue.text, start: cue.start_seconds, end: cue.end_seconds, segment: 0 });
+    }
+  }
+  const evidence = evidenceTokens(items);
+  if (evidence.length === 0) return null;
+  const groups = matchTokens(
+    displayTokens.map((t) => t.norm),
+    evidence.map((e) => e.norm),
+  );
+  const timed = locate(displayTokens, evidence, groups);
+  let matched = 0;
+  let interpolated = 0;
+  for (const t of timed) {
+    if (t.label === LabelExact || t.label === LabelSplit || t.label === LabelMerge) matched++;
+    if (t.interpolated) interpolated++;
+  }
+  let speechStart = evidence[0].start;
+  let speechEnd = evidence[0].end;
+  for (const e of evidence) {
+    speechStart = Math.min(speechStart, e.start);
+    speechEnd = Math.max(speechEnd, e.end);
+  }
+  if (speechEnd <= speechStart) return null;
+  return {
+    blocks: view(s, timed).blocks,
+    tokens: timed.length,
+    match_rate: round3(matched / timed.length),
+    interpolated_tokens: interpolated,
+    speech_start_seconds: speechStart,
+    speech_end_seconds: speechEnd,
+  };
 }

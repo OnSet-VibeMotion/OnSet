@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
 import * as align from '@onset/engine/align';
 import { readCues } from '@onset/engine/srt';
+import { describe, expect, it } from 'vitest';
 import { Buffer, tempDir } from './testutil';
 import './align';
 import { newRoot } from './cli';
@@ -46,7 +46,9 @@ describe('align', () => {
       '# 标题\n\n@{year}<2024年|二零二四年>@{/year}，我们发布了@{api}<API|A P I>@{/api}。\n',
     );
     expect((await runAlign('text', '--project-root', root)).err).toBeUndefined();
-    expect(fs.readFileSync(path.join(root, 'production/audio/tts-text.txt'), 'utf8')).toBe('二零二四年，我们发布了A P I。\n');
+    expect(fs.readFileSync(path.join(root, 'production/audio/tts-text.txt'), 'utf8')).toBe(
+      '二零二四年，我们发布了A P I。\n',
+    );
     alignEvidence(path.join(root, 'production/audio/align.json'), '二零二四年我们发布了API', 0.5);
     // 已有时间轴里手填的 visible_event_ids 要保留。
     writeAlignFile(
@@ -75,7 +77,17 @@ describe('align', () => {
     const seg = path.join(root, 'seg.json');
     alignEvidence(seg, '我们出发去北京看看风景和朋友', 0);
     const report = path.join(root, 'report.json');
-    const { err } = await runAlign('build', '--project-root', root, '--fps', '25', '--align', seg + '@1.5', '--report-json', report);
+    const { err } = await runAlign(
+      'build',
+      '--project-root',
+      root,
+      '--fps',
+      '25',
+      '--align',
+      seg + '@1.5',
+      '--report-json',
+      report,
+    );
     expect(err, '漏读受保护短语应以退出码 1 失败').toBeInstanceOf(ExitError);
     expect((err as ExitError).code).toBe(1);
     expect(message(err)).toContain('短语 k');
@@ -88,24 +100,33 @@ describe('align', () => {
   it('build rejects bad input', async () => {
     const root = tempDir();
     writeAlignFile(path.join(root, 'production/script-final.md'), '你好<世界\n');
-    expect(message((await runAlign('text', '--project-root', root)).err), '标记错误应报出位置').toContain('第 1 行第 3 列');
+    expect(message((await runAlign('text', '--project-root', root)).err), '标记错误应报出位置').toContain(
+      '第 1 行第 3 列',
+    );
     expect(message((await runAlign('build', '--project-root', root)).err), '缺 fps 应报错').toContain('fps 必须');
     writeAlignFile(path.join(root, 'production/script-final.md'), '你好。\n');
     writeAlignFile(path.join(root, 'production/audio/align.json'), '{"result":{"words":[{"w":"你"}]}}');
-    expect(message((await runAlign('build', '--project-root', root, '--fps', '30')).err), '认不出的对齐结果应报出顶层结构').toContain('键：result');
+    expect(
+      message((await runAlign('build', '--project-root', root, '--fps', '30')).err),
+      '认不出的对齐结果应报出顶层结构',
+    ).toContain('键：result');
     alignEvidence(path.join(root, 'production/audio/align.json'), '你好', 0);
     writeAlignFile(
       path.join(root, 'production/phrase-adjust.json'),
       '{"schema":1,"adjustments":[{"phrase_id":"nope","edge":"start","frame":0,"reason":"x"}]}',
     );
-    expect(message((await runAlign('build', '--project-root', root, '--fps', '30')).err), '修正层引用未知短语应报错').toContain('没有这个短语');
+    expect(
+      message((await runAlign('build', '--project-root', root, '--fps', '30')).err),
+      '修正层引用未知短语应报错',
+    ).toContain('没有这个短语');
   });
 
   it('help is complete', () => {
     const problems: string[] = [];
     for (const name of ['align_text', 'align_build']) {
       const op = findOp(name);
-      if (!op || (op.description ?? '').trim() === '' || !(op.examples ?? []).some((e) => e.startsWith(name + '('))) problems.push(`${name} 缺少说明或例子`);
+      if (!op || (op.description ?? '').trim() === '' || !(op.examples ?? []).some((e) => e.startsWith(name + '(')))
+        problems.push(`${name} 缺少说明或例子`);
     }
     expect(problems).toEqual([]);
     const build = findOp('align_build');
@@ -115,14 +136,73 @@ describe('align', () => {
 
   it('emits non-blocking hints when a long script lacks protected phrases or has overly long phrases', async () => {
     const root = tempDir();
-    writeAlignFile(path.join(root, 'production/script-final.md'), '这是一段没有任何受保护短语标记的长口播文稿内容，用于测试系统是否会在导出朗读文本时给出温和的提示信息，帮助编排工具在配音前及时补标专有名词与核心概念。\n');
+    writeAlignFile(
+      path.join(root, 'production/script-final.md'),
+      '这是一段没有任何受保护短语标记的长口播文稿内容，用于测试系统是否会在导出朗读文本时给出温和的提示信息，帮助编排工具在配音前及时补标专有名词与核心概念。\n',
+    );
     const missing = await runAlign('text', '--project-root', root);
     expect(missing.err).toBeUndefined();
     expect(missing.out).toContain('还没有标注受保护短语');
 
-    writeAlignFile(path.join(root, 'production/script-final.md'), '@{too-long}这是一个超过十六个阅读单位非常非常非常长的受保护短语@{/too-long}。\n');
+    writeAlignFile(
+      path.join(root, 'production/script-final.md'),
+      '@{too-long}这是一个超过十六个阅读单位非常非常非常长的受保护短语@{/too-long}。\n',
+    );
     const long = await runAlign('text', '--project-root', root);
     expect(long.err).toBeUndefined();
     expect(long.out).toContain('受保护短语 too-long 偏长');
+  });
+
+  it('persists canonical production/audio/align.json when building default voice.srt from external or chunked evidence', async () => {
+    const root = tempDir();
+    writeAlignFile(path.join(root, 'production/script-final.md'), '第一句你好。\n\n第二句再见。\n');
+    const seg1 = path.join(root, 'production/audio/alignment-runs/cand/chunk-1.json');
+    const seg2 = path.join(root, 'production/audio/alignment-runs/cand/chunk-2.json');
+    alignEvidence(seg1, '第一句你好', 0.1);
+    alignEvidence(seg2, '第二句再见', 0.2);
+
+    // 指定非默认 srt_out 时不写规范 align.json。
+    const custom = await runAlign(
+      'build',
+      '--project-root',
+      root,
+      '--fps',
+      '30',
+      '--align',
+      seg1,
+      '--align',
+      seg2 + '@10.5',
+      '--srt-out',
+      path.join(root, 'production/audio/voice-v02.srt'),
+    );
+    expect(custom.err).toBeUndefined();
+    expect(fs.existsSync(path.join(root, 'production/audio/align.json'))).toBe(false);
+
+    // 构建默认 voice.srt 且校验通过时，自动合并平移并落盘规范 production/audio/align.json。
+    const res = await runAlign(
+      'build',
+      '--project-root',
+      root,
+      '--fps',
+      '30',
+      '--align',
+      seg1,
+      '--align',
+      seg2 + '@10.5',
+    );
+    expect(res.err).toBeUndefined();
+    const canonical = path.join(root, 'production/audio/align.json');
+    expect(fs.existsSync(canonical)).toBe(true);
+    const items = align.loadEvidence(canonical);
+    expect(items).toHaveLength(10);
+    expect(items[0]).toMatchObject({ text: '第', start: 0.1, end: 0.2 });
+    expect(items[5]).toMatchObject({ text: '第', start: 10.7, end: 10.8 });
+
+    // 若规范 align.json 本身作为输入（含非零偏移），不得覆写原文件，避免重复执行时偏移累加。
+    const before = fs.readFileSync(canonical, 'utf8');
+    const shifted = await runAlign('build', '--project-root', root, '--fps', '30', '--align', canonical + '@1.5');
+    expect(shifted.err).toBeUndefined();
+    expect(fs.readFileSync(canonical, 'utf8')).toBe(before);
+    expect(readCues(path.join(root, 'production/audio/voice.srt'))[0].start_seconds).toBeCloseTo(1.6, 3);
   });
 });
