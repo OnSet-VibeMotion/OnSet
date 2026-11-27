@@ -10,6 +10,7 @@ import { inspectWavTail } from './tail';
 
 const transcodeCalls: { file: string; args: string[] }[] = [];
 let mockProbeDuration = 1;
+let customTranscode: ((file: string, args: string[]) => void) | null = null;
 
 vi.mock('./runner', () => ({ runVoice: vi.fn() }));
 vi.mock('./design', () => ({ designStatus: () => ({ ready: true }) }));
@@ -18,7 +19,8 @@ vi.mock('../mediaprobe', () => ({
   newToolchain: () => ({
     transcode: async (file: string, args: string[]) => {
       transcodeCalls.push({ file, args });
-      fs.writeFileSync(file, 'converted audio');
+      if (customTranscode) customTranscode(file, args);
+      else fs.writeFileSync(file, 'converted audio');
     },
     probe: () => ({ duration_seconds: mockProbeDuration, audio: { sample_rate: 48000, channels: 2 } }),
   }),
@@ -30,6 +32,7 @@ beforeEach(() => {
   calls.mockReset();
   transcodeCalls.length = 0;
   mockProbeDuration = 1;
+  customTranscode = null;
   vi.mocked(modelReady).mockReturnValue(true);
   calls.mockImplementation(async (_command, args) => {
     const flag = (key: string) => args[args.indexOf(key) + 1];
@@ -111,11 +114,10 @@ describe('managed speech synthesis', () => {
     transcodeCalls.length = 0;
     mockProbeDuration = 0.08;
     await synthesize({ ...options('edge'), output: path.join(root, 'tiny.wav') });
-    const tinyTranscode = transcodeCalls.find((c) => c.file.endsWith('audio.wav'));
-    expect(tinyTranscode?.args).not.toContain('-af');
+    expect(transcodeCalls.some((c) => c.args.includes('-af'))).toBe(false);
   });
 
-  it('detects abrupt high-energy WAV tails and emits non-blocking diagnostics without failing synthesis', async () => {
+  it('detects abrupt high-energy WAV tails and inspects non-WAV sources before tail fade', async () => {
     const makePcmWav = (file: string, sampleRate: number, totalSec: number, tailSilentSec: number) => {
       const totalSamples = Math.round(sampleRate * totalSec);
       const activeSamples = Math.round(sampleRate * (totalSec - tailSilentSec));
@@ -143,10 +145,13 @@ describe('managed speech synthesis', () => {
 
     const abruptWav = path.join(root, 'abrupt.wav');
     const cleanWav = path.join(root, 'clean.wav');
+    const shortTailWav = path.join(root, 'short-tail-15ms.wav');
     makePcmWav(abruptWav, 24000, 1.0, 0);
     makePcmWav(cleanWav, 24000, 1.0, 0.12);
+    makePcmWav(shortTailWav, 48000, 1.0, 0.015);
     expect(inspectWavTail(abruptWav)).toMatchObject({ abrupt: true, tailSilenceMs: 0 });
     expect(inspectWavTail(cleanWav)).toMatchObject({ abrupt: false });
+    expect(inspectWavTail(shortTailWav)).toMatchObject({ abrupt: false, tailSilenceMs: 15 });
 
     let callIdx = 0;
     calls.mockImplementation(async (_command, args) => {
@@ -167,6 +172,35 @@ describe('managed speech synthesis', () => {
     expect(report.segments[0].abrupt_tail).toBe(true);
     expect(report.segments[1].abrupt_tail).toBeUndefined();
     expect(report.warnings).toEqual(result.warnings);
+
+    // 非 WAV 音源（Edge MP3）：先归一化 PCM 检查，15ms 自然尾静音不误报，0ms 无尾静音仍准确报警。
+    calls.mockImplementation(async (_command, args) => {
+      fs.writeFileSync(args[args.indexOf('--write-media') + 1], 'mp3');
+      return '{}';
+    });
+    let normIdx = 0;
+    customTranscode = (file, args) => {
+      if (file.endsWith('.normalized.wav')) {
+        fs.copyFileSync(normIdx++ === 0 ? shortTailWav : abruptWav, file);
+      } else if (args.some((arg) => arg.endsWith('.normalized.wav'))) {
+        expect(args).toContain('-af');
+        fs.writeFileSync(file, 'faded audio');
+      } else {
+        fs.writeFileSync(file, 'converted audio');
+      }
+    };
+    const mp3Res = await synthesize({
+      ...options('edge'),
+      output: path.join(root, 'edge-tail.wav'),
+      text: '高能量后带15毫秒尾静音。\n真正零尾静音硬断。',
+    });
+    const mp3Report = JSON.parse(fs.readFileSync(mp3Res.report, 'utf8'));
+    expect(mp3Report.segments[0].abrupt_tail).toBeUndefined();
+    expect(mp3Report.segments[1].abrupt_tail).toBe(true);
+    expect(mp3Res.warnings).toHaveLength(1);
+    expect(mp3Res.warnings![0]).toContain('第 2 段');
+    expect(fs.existsSync(path.join(mp3Res.sources, '001', '.normalized.wav'))).toBe(false);
+    expect(fs.existsSync(path.join(mp3Res.sources, '002', '.normalized.wav'))).toBe(false);
   });
 
   it('splits Tencent at its request limit without losing any text', async () => {

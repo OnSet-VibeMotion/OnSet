@@ -5,6 +5,15 @@
  * 只产出诊断信息与告警，不阻断或改写音频。
  */
 import fs from 'node:fs';
+import path from 'node:path';
+import { goRound } from '../gofmt';
+import type { Toolchain } from '../mediaprobe';
+
+/** 分段末尾微淡出时长（秒）：消除与数字零静音拼接的咔哒硬断，不损伤正常语尾。 */
+export const SegmentTailFadeSeconds = 0.018;
+/** 低于此时长（秒）的极短片段不做尾淡出。 */
+const MinFadeDurationSeconds = 0.1;
+const roundSec = (value: number) => goRound(value * 1_000_000) / 1_000_000;
 
 export interface TailInspection {
   tailSilenceMs: number;
@@ -71,10 +80,9 @@ function parsePcmWavLayout(fd: number, fileSize: number): WavLayout | null {
 }
 
 /**
- * 检查 16-bit PCM WAV 末尾是否出现高能量硬截断。
- * excludeTailMs 可跳过已施加的极短防爆音淡出窗口。非 PCM WAV 返回 undefined。
+ * 检查未施加淡出的 16-bit PCM WAV 末尾是否出现高能量硬截断；非 PCM WAV 返回 undefined。
  */
-export function inspectWavTail(file: string, excludeTailMs = 0): TailInspection | undefined {
+export function inspectWavTail(file: string): TailInspection | undefined {
   let fd = -1;
   try {
     const stat = fs.statSync(file);
@@ -86,16 +94,11 @@ export function inspectWavTail(file: string, excludeTailMs = 0): TailInspection 
     const totalFrames = Math.floor(wav.dataSize / frameBytes);
     if (totalFrames / wav.sampleRate < MIN_DURATION_SECONDS) return undefined;
 
-    const excludeFrames = Math.min(totalFrames, Math.max(0, Math.round((excludeTailMs / 1000) * wav.sampleRate)));
-    const effectiveFrames = totalFrames - excludeFrames;
-    const rmsFrames = Math.max(1, Math.round(TAIL_RMS_WINDOW_SECONDS * wav.sampleRate));
-    if (effectiveFrames < rmsFrames) return undefined;
+    const rmsFrames = Math.max(1, goRound(TAIL_RMS_WINDOW_SECONDS * wav.sampleRate));
+    if (totalFrames < rmsFrames) return undefined;
 
-    const windowFrames = Math.min(
-      effectiveFrames,
-      Math.max(rmsFrames, Math.round(INSPECT_WINDOW_SECONDS * wav.sampleRate)),
-    );
-    const startFrame = effectiveFrames - windowFrames;
+    const windowFrames = Math.min(totalFrames, Math.max(rmsFrames, goRound(INSPECT_WINDOW_SECONDS * wav.sampleRate)));
+    const startFrame = totalFrames - windowFrames;
     const buf = Buffer.alloc(windowFrames * frameBytes);
     const read = fs.readSync(fd, buf, 0, buf.length, wav.dataOffset + startFrame * frameBytes);
     const framesRead = Math.floor(read / frameBytes);
@@ -119,9 +122,9 @@ export function inspectWavTail(file: string, excludeTailMs = 0): TailInspection 
     }
 
     const tailSilenceFrames = lastActive < 0 ? framesRead : framesRead - 1 - lastActive;
-    const tailSilenceMs = Math.round(((tailSilenceFrames * 1000) / wav.sampleRate) * 10) / 10;
+    const tailSilenceMs = goRound(((tailSilenceFrames * 1000) / wav.sampleRate) * 10) / 10;
     const rms = Math.sqrt(rmsSum / rmsFrames);
-    const tail50msDb = Math.max(-120, Math.round(20 * Math.log10(Math.max(rms, 1e-6)) * 10) / 10);
+    const tail50msDb = Math.max(-120, goRound(20 * Math.log10(Math.max(rms, 1e-6)) * 10) / 10);
     const abrupt = tailSilenceMs <= ABRUPT_MAX_SILENCE_MS && tail50msDb > ABRUPT_MIN_RMS_DB;
     return { tailSilenceMs, tail50msDb, abrupt };
   } catch {
@@ -129,4 +132,63 @@ export function inspectWavTail(file: string, excludeTailMs = 0): TailInspection 
   } finally {
     if (fd >= 0) fs.closeSync(fd);
   }
+}
+
+/**
+ * 将原始分段音频归一化为 48kHz 双声道 PCM WAV 并施加极短防爆音尾淡出，同时在淡出前检查真实尾静音。
+ * WAV 源直接检查原始文件后单次转码；非 WAV 源（如 MP3）先转无淡出 PCM 检查，再按实测时长施加尾淡出。
+ */
+export async function normalizeSegmentAudio(
+  tc: Pick<Toolchain, 'probe' | 'transcode'>,
+  raw: string,
+  audio: string,
+  signal?: AbortSignal,
+): Promise<{ duration: number; tail?: TailInspection }> {
+  let tail: TailInspection | undefined;
+  if (path.extname(raw).toLowerCase() === '.wav') {
+    tail = inspectWavTail(raw);
+    let rawDuration = 0;
+    try {
+      rawDuration = tc.probe(raw).duration_seconds;
+    } catch {
+      rawDuration = 0;
+    }
+    const transcodeArgs = ['-i', raw, '-vn'];
+    if (Number.isFinite(rawDuration) && rawDuration > MinFadeDurationSeconds) {
+      const fadeStart = Math.max(0, roundSec(rawDuration - SegmentTailFadeSeconds));
+      transcodeArgs.push('-af', `afade=t=out:st=${fadeStart}:d=${SegmentTailFadeSeconds}`);
+    }
+    transcodeArgs.push('-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le');
+    await tc.transcode(audio, transcodeArgs, signal);
+  } else {
+    const normalized = path.join(path.dirname(audio), '.normalized.wav');
+    try {
+      await tc.transcode(normalized, ['-i', raw, '-vn', '-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le'], signal);
+      tail = inspectWavTail(normalized);
+      const normDuration = tc.probe(normalized).duration_seconds;
+      if (Number.isFinite(normDuration) && normDuration > MinFadeDurationSeconds) {
+        const fadeStart = Math.max(0, roundSec(normDuration - SegmentTailFadeSeconds));
+        await tc.transcode(
+          audio,
+          [
+            '-i',
+            normalized,
+            '-vn',
+            '-af',
+            `afade=t=out:st=${fadeStart}:d=${SegmentTailFadeSeconds}`,
+            '-c:a',
+            'pcm_s16le',
+          ],
+          signal,
+        );
+      } else {
+        fs.renameSync(normalized, audio);
+      }
+    } finally {
+      fs.rmSync(normalized, { force: true });
+    }
+  }
+  const duration = tc.probe(audio).duration_seconds;
+  if (!Number.isFinite(duration) || duration <= 0) throw new Error('配音音频时长无效');
+  return { duration, tail };
 }

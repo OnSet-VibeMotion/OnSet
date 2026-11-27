@@ -1,13 +1,23 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { BreezeTTS2 } from '../config/providers';
+import { designStatus } from '../voice/design';
 import { ensureTool, type ToolSpec, toolStatus } from './tools';
 import { compareToolVersions, uvToolInstalledVersion } from './uv_version';
 
+const createdDirs: string[] = [];
 function tempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'onset-uvver-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-uvver-'));
+  createdDirs.push(dir);
+  return dir;
 }
+
+afterEach(() => {
+  for (const dir of createdDirs) fs.rmSync(dir, { recursive: true, force: true });
+  createdDirs.length = 0;
+});
 
 function makeFakeUvVenv(root: string, pkgDirName: string, version: string, withMetadata = true): string {
   const venv = path.join(root, 'venv');
@@ -120,6 +130,43 @@ describe('uvToolInstalledVersion & toolStatus version gate', () => {
       const env = { HOME: home, PATH: '/nonexistent' };
       expect(uvToolInstalledVersion(spec, launcher, env)).toBe('0.6.1');
       expect(toolStatus(spec, env)).toEqual({ ok: false, where: launcher });
+    },
+  );
+
+  it.skipIf(process.platform === 'win32')(
+    'does not attribute a stale managed venv version to a custom text wrapper in managed bin and keeps designStatus ready',
+    () => {
+      const home = tempDir();
+      const data = path.join(home, '.local', 'share', 'onset');
+      const bin = path.join(data, 'bin');
+      fs.mkdirSync(bin, { recursive: true });
+      const staleDistInfo = path.join(
+        data,
+        'tools',
+        'uv',
+        'mlx-audio',
+        'lib',
+        'python3.12',
+        'site-packages',
+        'mlx_audio-0.6.1.dist-info',
+      );
+      fs.mkdirSync(staleDistInfo, { recursive: true });
+      fs.writeFileSync(path.join(staleDistInfo, 'METADATA'), 'Name: mlx-audio\nVersion: 0.6.1\n');
+      const wrapper = path.join(bin, 'mlx_audio.tts.generate');
+      fs.writeFileSync(wrapper, '#!/bin/sh\nexec /opt/custom/mlx_audio.tts.generate "$@"\n', { mode: 0o755 });
+
+      const modelRoot = path.join(data, 'models', 'mlx-community__Breeze-TTS-2-mlx-8bit');
+      for (const f of BreezeTTS2.files) {
+        const dest = path.join(modelRoot, f.path);
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.writeFileSync(dest, '');
+        fs.truncateSync(dest, f.size);
+      }
+
+      const env = { HOME: home, PATH: '/nonexistent' };
+      expect(uvToolInstalledVersion(spec, wrapper, env)).toBeNull();
+      expect(toolStatus(spec, env)).toEqual({ ok: true, where: wrapper });
+      expect(designStatus(env, 'darwin', 'arm64')).toEqual({ ready: true, supported: true, problem: '' });
     },
   );
 

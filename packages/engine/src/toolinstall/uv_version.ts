@@ -83,33 +83,35 @@ function venvFromPython(pythonPath: string): string {
   return '';
 }
 
-function venvFromScript(binaryPath: string): string {
+type LauncherKind = { kind: 'script'; venv: string } | { kind: 'binary' } | { kind: 'unreadable' };
+
+function inspectLauncher(binaryPath: string): LauncherKind {
   let head: string;
   try {
     const fd = fs.openSync(binaryPath, 'r');
     try {
       const buf = Buffer.alloc(512);
       const n = fs.readSync(fd, buf, 0, 512, 0);
-      if (buf.subarray(0, n).includes(0)) return '';
+      if (buf.subarray(0, n).includes(0)) return { kind: 'binary' };
       head = buf.subarray(0, n).toString('utf8');
     } finally {
       fs.closeSync(fd);
     }
   } catch {
-    return '';
+    return { kind: 'unreadable' };
   }
-  if (!head.startsWith('#!')) return '';
+  if (!head.startsWith('#!')) return { kind: 'script', venv: '' };
   const firstLineEnd = head.indexOf('\n');
   const firstLine = (firstLineEnd >= 0 ? head.slice(2, firstLineEnd) : head.slice(2)).trim();
   // uv 在路径含空格时写出 `#!/bin/sh\n'''exec' '/path/to/python' "$0" "$@"`
   if (firstLine === '/bin/sh' || firstLine.endsWith('/sh')) {
     const execMatch = /'''exec'[ \t]+(?:'([^'\r\n]+)'|"([^"\r\n]+)"|([^ \t\r\n]+))/.exec(head);
     const py = execMatch?.[1] ?? execMatch?.[2] ?? execMatch?.[3] ?? '';
-    return py ? venvFromPython(py) : '';
+    return { kind: 'script', venv: py ? venvFromPython(py) : '' };
   }
   const token = firstLine.split(/[ \t]+/)[0] ?? '';
-  if (!token || token.endsWith('/env')) return '';
-  return venvFromPython(token);
+  if (!token || token.endsWith('/env')) return { kind: 'script', venv: '' };
+  return { kind: 'script', venv: venvFromPython(token) };
 }
 
 function sitePackagesDirs(venvDir: string): string[] {
@@ -168,11 +170,14 @@ export function uvToolInstalledVersion(
   binaryPath: string,
   env: Record<string, string | undefined>,
 ): string | null {
+  const launcher = inspectLauncher(binaryPath);
+  if (launcher.kind === 'unreadable') return null;
+
   const candidates: string[] = [];
   const add = (dir: string) => {
     if (dir && !candidates.includes(dir)) candidates.push(dir);
   };
-  add(venvFromScript(binaryPath));
+  if (launcher.kind === 'script') add(launcher.venv);
   try {
     const real = fs.realpathSync(binaryPath);
     const parentVenv = venvFromPython(real);
@@ -180,16 +185,20 @@ export function uvToolInstalledVersion(
   } catch {
     // 忽略符号链接解析失败。
   }
-  const managedBin = binDir(env);
-  const data = dataDir(env);
-  if (managedBin && data) {
-    const sameDir =
-      process.platform === 'win32'
-        ? path.dirname(path.resolve(binaryPath)).toLowerCase() === path.resolve(managedBin).toLowerCase()
-        : path.dirname(path.resolve(binaryPath)) === path.resolve(managedBin);
-    if (sameDir) {
-      add(path.join(data, 'tools', 'uv', spec.package));
-      add(path.join(data, 'tools', 'uv', spec.package.toLowerCase().replace(/[-_.]+/g, '-')));
+  // 只有二进制启动器（如 Windows uv .exe）无法读 shebang，才回退到受管目录；
+  // 无法识别的自定义文本包装脚本按兼容契约返回 null，避免误读残留在受管目录里的旧版本。
+  if (launcher.kind === 'binary') {
+    const managedBin = binDir(env);
+    const data = dataDir(env);
+    if (managedBin && data) {
+      const sameDir =
+        process.platform === 'win32'
+          ? path.dirname(path.resolve(binaryPath)).toLowerCase() === path.resolve(managedBin).toLowerCase()
+          : path.dirname(path.resolve(binaryPath)) === path.resolve(managedBin);
+      if (sameDir) {
+        add(path.join(data, 'tools', 'uv', spec.package));
+        add(path.join(data, 'tools', 'uv', spec.package.toLowerCase().replace(/[-_.]+/g, '-')));
+      }
     }
   }
   for (const venv of candidates) {

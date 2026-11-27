@@ -10,7 +10,9 @@ import { generateTake } from './adapters';
 import { designStatus } from './design';
 import { defaultDir } from './dir';
 import { defaultName, get } from './library';
-import { inspectWavTail } from './tail';
+import { normalizeSegmentAudio, SegmentTailFadeSeconds } from './tail';
+
+export { SegmentTailFadeSeconds };
 
 /** 多段配音（单换行分段）默认在段落之间插入的静音停顿（毫秒）。 */
 export const DefaultParagraphPauseMs = 650;
@@ -20,10 +22,6 @@ export const DefaultChapterPauseMs = 1300;
 export const MaxParagraphPauseMs = 3000;
 /** 章间静音停顿上限（毫秒）。 */
 export const MaxChapterPauseMs = 5000;
-/** 分段末尾微淡出时长（秒）：消除与数字零静音拼接的咔哒硬断，不损伤正常语尾。 */
-export const SegmentTailFadeSeconds = 0.018;
-/** 低于此时长（秒）的极短片段不做尾淡出。 */
-const MinFadeDurationSeconds = 0.1;
 
 export interface SynthesisOptions {
   provider: string;
@@ -273,27 +271,7 @@ export async function synthesize(opts: SynthesisOptions): Promise<SynthesisResul
         }
       }
       const audio = path.join(dir, 'audio.wav');
-      let rawDuration = 0;
-      try {
-        rawDuration = tc.probe(raw).duration_seconds;
-      } catch {
-        rawDuration = 0;
-      }
-      const transcodeArgs = ['-i', raw, '-vn'];
-      const applyFade = Number.isFinite(rawDuration) && rawDuration > MinFadeDurationSeconds;
-      if (applyFade) {
-        const fadeStart = Math.max(0, roundSec(rawDuration - SegmentTailFadeSeconds));
-        transcodeArgs.push('-af', `afade=t=out:st=${fadeStart}:d=${SegmentTailFadeSeconds}`);
-      }
-      transcodeArgs.push('-ac', '2', '-ar', '48000', '-c:a', 'pcm_s16le');
-      await tc.transcode(audio, transcodeArgs, opts.signal);
-      const duration = tc.probe(audio).duration_seconds;
-      if (!Number.isFinite(duration) || duration <= 0) throw new Error('配音音频时长无效');
-      // 优先检查原始 PCM WAV 尾音（未受微淡出影响）；非 WAV 源（如 MP3）跳过淡出窗检查转码后的 PCM。
-      const tail =
-        path.extname(raw).toLowerCase() === '.wav'
-          ? inspectWavTail(raw)
-          : inspectWavTail(audio, applyFade ? SegmentTailFadeSeconds * 1000 : 0);
+      const { duration, tail } = await normalizeSegmentAudio(tc, raw, audio, opts.signal);
       if (tail?.abrupt) abruptSegments.push(index + 1);
       const relAudio = path.relative(work, audio).split(path.sep).join('/');
       segments.push({
