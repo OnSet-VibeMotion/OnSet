@@ -56,17 +56,21 @@ function matchesManagedAudio(root: string, option: ScriptAudioOption, stem: stri
   const original = file(root, stem + '.tts/audio.wav');
   const current = file(root, option.path);
   if (!original || !current) return false;
-  const a = fs.statSync(original),
-    b = fs.statSync(current);
-  if (a.size !== b.size) return false;
-  const key = `${a.mtimeMs}:${a.ctimeMs}:${b.mtimeMs}:${b.ctimeMs}:${a.size}`;
-  let cached = matchedAudio.get(current);
-  if (cached?.key !== key) {
-    cached = { key, matches: fs.readFileSync(original).equals(fs.readFileSync(current)) };
-    matchedAudio.set(current, cached);
-    if (matchedAudio.size > 24) matchedAudio.delete(matchedAudio.keys().next().value!);
+  try {
+    const a = fs.statSync(original),
+      b = fs.statSync(current);
+    if (a.size !== b.size) return false;
+    const key = `${a.mtimeMs}:${a.ctimeMs}:${b.mtimeMs}:${b.ctimeMs}:${a.size}`;
+    let cached = matchedAudio.get(current);
+    if (cached?.key !== key) {
+      cached = { key, matches: fs.readFileSync(original).equals(fs.readFileSync(current)) };
+      matchedAudio.set(current, cached);
+      if (matchedAudio.size > 24) matchedAudio.delete(matchedAudio.keys().next().value!);
+    }
+    return cached.matches;
+  } catch {
+    return false;
   }
-  return cached.matches;
 }
 
 const timingCache = new Map<string, { key: string; timing: ScriptAudio['timing']; blocks?: align.ViewBlock[] }>();
