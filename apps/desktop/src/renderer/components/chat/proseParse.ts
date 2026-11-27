@@ -1,6 +1,7 @@
-import { countChoicesBlocks, parseQuestionsBlock, stripValidQuestions } from './questionParse';
+import { parseQuestionsBlock, stripValidQuestions } from './questionParse';
 
-const choicesBlock = /```choices\s*\n([\s\S]*?)```/g;
+const choicesBlockAll = /```choices\s*\n([\s\S]*?)```/g;
+const choicesBlockFirst = /```choices\s*\n([\s\S]*?)```/;
 
 /**
  * 推荐的整片风格：film-styles 代码块，每行「来源/目录名 理由」是全片的默认风格；
@@ -8,9 +9,14 @@ const choicesBlock = /```choices\s*\n([\s\S]*?)```/g;
  */
 const filmStylesBlock = /```film-styles\s*\n([\s\S]*?)```/;
 
-/** 去掉回复里的 choices / questions / film-styles 代码块：它们另外显示成交互卡片或按钮。 */
+/** 去掉回复里已被卡片/按钮接管的 choices / questions / film-styles 代码块；未接管的保留原文。 */
 export function stripChoices(text: string): string {
-  return stripValidQuestions(text).replace(choicesBlock, '').replace(filmStylesBlock, '').trimEnd();
+  const hasMultiCard = parseQuestionsBlock(text) !== null;
+  const withoutQuestions = stripValidQuestions(text);
+  const withoutChoices = hasMultiCard
+    ? withoutQuestions.replace(choicesBlockAll, '')
+    : withoutQuestions.replace(choicesBlockFirst, '');
+  return withoutChoices.replace(filmStylesBlock, '').trimEnd();
 }
 
 export interface StylePick {
@@ -58,7 +64,7 @@ export function parseStylePicks(text: string, known: Set<string>): StylePick[] {
  * 若回复已含 ```questions 块或 2 个及以上 ```choices 块，由 parseQuestionsBlock 接管渲染多题卡片。
  */
 export function parseChoices(text: string): string[] {
-  if (parseQuestionsBlock(text) !== null || countChoicesBlocks(text) >= 2) return [];
+  if (parseQuestionsBlock(text) !== null) return [];
   const match = /```choices\s*\n([\s\S]*?)```/.exec(text);
   if (!match) return [];
   return match[1]

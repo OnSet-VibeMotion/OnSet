@@ -212,31 +212,46 @@ export async function sessionAPI(s: Server, request: Request, rest: string): Pro
         return writeError(404, 'not_found', '提问请求不存在');
       }
       let body: Record<string, unknown>;
+      let view: ReturnType<typeof decodeView>;
       try {
         body = await decodeJSON(request);
+        // 在消费问题前先校验 view，避免非法 view 抛出 DecodeError 时已经删掉 pending 问题。
+        view = decodeView(fieldObject(body, 'view'));
       } catch (err) {
-        if (err instanceof DecodeError) return writeError(400, 'invalid_json', '请求不是合法 JSON');
+        if (err instanceof DecodeError) return writeError(400, 'invalid_json', err.message || '请求不是合法 JSON');
         throw err;
       }
-      let answered;
+      const deferred: { continuation?: { queued?: boolean; turn_id?: string }; startFailure?: unknown } = {};
+      let answered: ReturnType<typeof answerQuestion>;
       try {
-        answered = answerQuestion(sess.questions, sess.events, parts[2], body, (turn, event) =>
-          emit(sess, turn, event),
+        answered = answerQuestion(
+          sess.questions,
+          sess.events,
+          parts[2],
+          body,
+          (turn, event) => emit(sess, turn, event),
+          (message) => {
+            const next = { message, attachments: null, view };
+            if (enqueueTurn(p, sess, next)) {
+              deferred.continuation = { queued: true };
+              return;
+            }
+            try {
+              const turn = startTurn(s, p, sess, next);
+              deferred.continuation = { turn_id: turn.turn_id };
+            } catch (err) {
+              deferred.startFailure = err;
+              throw err;
+            }
+          },
         );
       } catch (err) {
+        if (deferred.startFailure !== undefined) return writeStartError(deferred.startFailure);
         return writeError(400, 'invalid_answer', (err as Error).message);
       }
       if (!answered.ok) return writeError(409, 'not_pending', '这组问题已经答过，或这一轮已经结束');
-      if (answered.mode === 'deferred' && answered.response.status === 'answered') {
-        const next = { message: answered.message, attachments: null, view: decodeView(fieldObject(body, 'view')) };
-        const queued = enqueueTurn(p, sess, next);
-        if (queued) return writeJSON(202, goMap({ ok: true, mode: 'deferred', queued: true }));
-        try {
-          const turn = startTurn(s, p, sess, next);
-          return writeJSON(202, goMap({ ok: true, mode: 'deferred', turn_id: turn.turn_id }));
-        } catch (err) {
-          return writeStartError(err);
-        }
+      if (deferred.continuation !== undefined) {
+        return writeJSON(202, goMap({ ok: true, mode: 'deferred', ...deferred.continuation }));
       }
       return writeJSON(200, goMap({ ok: true, mode: answered.mode }));
     }

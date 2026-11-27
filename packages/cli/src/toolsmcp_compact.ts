@@ -261,19 +261,22 @@ export function searchTools(
     typeof input.limit === 'number' && Number.isFinite(input.limit) ? Math.trunc(input.limit) : defaultSearchLimit;
   const limit = Math.max(1, Math.min(30, rawLimit));
 
-  if ((rawQuery === '' && rawCategory === '') || rawQuery === '*' || rawQuery.toLowerCase() === 'list') {
+  const isWildcard = rawQuery === '*' || rawQuery.toLowerCase() === 'list';
+  if ((rawQuery === '' || isWildcard) && rawCategory === '') {
     return { text: formatToolIndex(catalog), isError: false };
   }
+  const effectiveQuery = isWildcard ? '' : rawQuery;
 
   const allByName = new Map(catalog.all.map((t) => [t.name, t]));
   const aliasTarget =
-    rawQuery === LegacyToolHelpName
+    effectiveQuery === LegacyToolHelpName
       ? (allByName.get(ToolSearchName) ?? allByName.get(LegacyToolHelpName))
-      : rawQuery === LegacyOnsetCallName
+      : effectiveQuery === LegacyOnsetCallName
         ? allByName.get(ToolCallName)
-        : (allByName.get(rawQuery) ?? catalog.all.find((t) => t.name.toLowerCase() === rawQuery.toLowerCase()));
+        : (allByName.get(effectiveQuery) ??
+          catalog.all.find((t) => t.name.toLowerCase() === effectiveQuery.toLowerCase()));
 
-  if (rawCategory === '' && aliasTarget) {
+  if (rawCategory === '' && effectiveQuery !== '' && aliasTarget) {
     const body = aliasTarget.help || aliasTarget.description;
     const routeNote = catalog.routedNames.has(aliasTarget.name)
       ? `\n\n调用方式：经 ${ToolCallName}({"tool": ${JSON.stringify(aliasTarget.name)}, "arguments": {...}}) 调用。`
@@ -290,9 +293,9 @@ export function searchTools(
   }
 
   let ranked: ToolDef[];
-  if (rawQuery !== '') {
-    const q = rawQuery.toLowerCase();
-    const tokens = tokenizeQuery(rawQuery);
+  if (effectiveQuery !== '') {
+    const q = effectiveQuery.toLowerCase();
+    const tokens = tokenizeQuery(effectiveQuery);
     ranked = candidates
       .map((tool) => ({ tool, score: scoreTool(tool, q, tokens) }))
       .filter((entry) => entry.score > 0)

@@ -78,6 +78,15 @@ test('approval, background work and streamed output have distinct progress state
   ]);
   expect(qState).toMatchObject({ phase: 'question', label: '等待你回答问题', detail: '确认规格' });
   expect(suggestStop(qState)).toBe(false);
+  const deferredQState = turnActivity(qTurn, qEvents, [], start + 70000, [
+    {
+      id: 'q-def',
+      title: '旧回合遗留问题',
+      deferred: true,
+      questions: [{ id: 'a', question: 'Q', options: [{ label: '1' }, { label: '2' }] }],
+    },
+  ]);
+  expect(deferredQState).toMatchObject({ phase: 'tool', label: '正在执行操作' });
   expect(
     activity([{ kind: 'background-tasks', background_tasks: [{ id: 'bg', description: '生成配音' }] }]).phase,
   ).toBe('background');

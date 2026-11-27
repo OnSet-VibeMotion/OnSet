@@ -166,4 +166,49 @@ describe('QuestionCard', () => {
     expect(submitted[1]).toMatchObject({ status: 'skipped' });
     expect(document.activeElement?.id).toBe('prompt');
   });
+
+  test('supports radiogroup ArrowDown keyboard selection, roving tabIndex, and prototype-property question ids', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    const protoAsk: QuestionAsk = {
+      id: 'q-proto',
+      questions: [
+        {
+          id: 'constructor',
+          header: '构造',
+          question: '测试 constructor 键名？',
+          options: [{ label: '方案甲' }, { label: '方案乙' }],
+        },
+        {
+          id: '__proto__',
+          header: '原型',
+          question: '测试 __proto__ 键名？',
+          options: [{ label: '项一' }, { label: '项二' }],
+        },
+      ],
+    };
+    render(<QuestionCard ask={protoAsk} onSubmit={onSubmit} />);
+
+    const r1 = screen.getByRole('radio', { name: '方案甲' });
+    const r2 = screen.getByRole('radio', { name: '方案乙' });
+    expect(r1.getAttribute('tabindex')).toBe('0');
+    expect(r2.getAttribute('tabindex')).toBe('-1');
+
+    r1.focus();
+    await user.keyboard('{ArrowDown}');
+    expect(document.activeElement).toBe(r2);
+    expect(r2.getAttribute('aria-checked')).toBe('true');
+    expect(r2.getAttribute('tabindex')).toBe('0');
+    expect(r1.getAttribute('tabindex')).toBe('-1');
+
+    await user.click(screen.getByRole('radio', { name: '项一' }));
+    await user.click(screen.getByRole('button', { name: /提交全部回答/ }));
+    expect(onSubmit).toHaveBeenCalledWith({
+      status: 'answered',
+      answers: [
+        { question_id: 'constructor', label: '构造', selected: ['方案乙'] },
+        { question_id: '__proto__', label: '原型', selected: ['项一'] },
+      ],
+    });
+  });
 });

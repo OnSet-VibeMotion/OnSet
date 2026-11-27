@@ -98,4 +98,22 @@ describe('questionParse & upgraded choices parser', () => {
     expect(text).toContain('2. [章节]：X、Y；补充：加总结页');
     expect(text).toContain('补充说明：封面简短');
   });
+
+  test('falls back to single choices pills when a second choices block has only 1 item and keeps unconsumed blocks', () => {
+    const prose = '第一题：\n```choices\nA\nB\n```\n补充：\n```choices\n仅一项\n```';
+    expect(parseQuestionsBlock(prose, 'partial')).toBeNull();
+    expect(parseChoices(prose)).toEqual(['A', 'B']);
+    expect(stripChoices(prose)).toContain('仅一项');
+  });
+
+  test('strips only the first valid ```questions block and preserves any subsequent block in prose', () => {
+    const q1 = JSON.stringify({ questions: [{ question: '第一组？', options: ['A', 'B'] }] });
+    const q2 = JSON.stringify({ questions: [{ question: '第二组？', options: ['C', 'D'] }] });
+    const prose = `说明：\n\`\`\`questions\n${q1}\n\`\`\`\n补充：\n\`\`\`questions\n${q2}\n\`\`\``;
+    const parsed = parseQuestionsBlock(prose, 'two');
+    expect(parsed.questions[0].question).toBe('第一组？');
+    const stripped = stripChoices(prose);
+    expect(stripped).not.toContain('第一组？');
+    expect(stripped).toContain('第二组？');
+  });
 });

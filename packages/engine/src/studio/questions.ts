@@ -15,7 +15,7 @@ import {
   type QuestionRequest,
   type QuestionResolutionStatus,
   type QuestionResponse,
-  writeQuestionResponse,
+  submitQuestionResponse,
 } from '../studioview';
 import type { SessionEvent } from './sessions_types';
 
@@ -122,8 +122,9 @@ export type AnswerQuestionResult =
 
 /**
  * 接收前端提交的回答。
- * - live 模式：写回 inbox/<id>.response.json 唤醒阻塞中的 studio_ask 工具；
- * - deferred 模式：发出 question-resolved，并把格式化后的回答返回给调用方自动发下一轮。
+ * - live 模式：经跨进程原子协调状态写回 inbox/<id>.response.json 唤醒阻塞中的 studio_ask 工具；
+ * - deferred 模式（含超时抢先移交场景）：先执行可选 onDeferred 续接回调，成功后再消费问题并发出 question-resolved，
+ *   确保续接失败（如 project_busy）时问题保留在 pending 中不丢失用户回答。
  */
 export function answerQuestion(
   pending: Map<string, PendingQuestion>,
@@ -131,27 +132,38 @@ export function answerQuestion(
   id: string,
   rawResponse: unknown,
   emit: Emit,
+  onDeferred?: (message: string) => void,
 ): AnswerQuestionResult {
   const item = pending.get(id) ?? findDeferredQuestion(events, id);
   if (!item) return { ok: false };
   const response = normalizeQuestionResponse(item.request, rawResponse);
   if (!item.deferred) {
-    if (!writeQuestionResponse(item.inbox, id, response)) {
+    const settled = submitQuestionResponse(item.inbox, id, response);
+    if (settled === 'live') {
+      pending.delete(id);
+      emit(item.turnID, {
+        kind: KindQuestionResolved,
+        question: {
+          id,
+          status: response.status,
+          answers: response.answers,
+          answer_map: response.answer_map,
+          note: response.note,
+        },
+      });
+      return { ok: true, mode: 'live', response };
+    }
+    if (settled === 'already_answered') {
       pending.delete(id);
       return { ok: false };
     }
-    pending.delete(id);
-    emit(item.turnID, {
-      kind: KindQuestionResolved,
-      question: {
-        id,
-        status: response.status,
-        answers: response.answers,
-        answer_map: response.answer_map,
-        note: response.note,
-      },
-    });
-    return { ok: true, mode: 'live', response };
+    // 工具端已在轮询间隙完成超时移交：同步更新状态并无缝转入 deferred 续接分支。
+    item.deferred = true;
+    emit(item.turnID, { kind: KindQuestionDeferred, question: { id, deferred: true } });
+  }
+  const message = formatQuestionAnswers(item.request, response);
+  if (response.status === 'answered' && onDeferred) {
+    onDeferred(message);
   }
   pending.delete(id);
   emit(item.turnID, {
@@ -168,15 +180,20 @@ export function answerQuestion(
     ok: true,
     mode: 'deferred',
     response,
-    message: formatQuestionAnswers(item.request, response),
+    message,
   };
 }
 
-/** 这一轮结束：未移交（!deferred）的提问标为 expired；已移交（deferred）的跨轮保留等待用户提交。 */
+/** 这一轮结束：未移交（!deferred）的提问标为 expired；若工具端已抢先移交则跨轮保留。 */
 export function expireQuestions(pending: Map<string, PendingQuestion>, turnID: string, emit: Emit): void {
   for (const [id, item] of [...pending]) {
     if (item.turnID !== turnID || item.deferred) continue;
-    writeQuestionResponse(item.inbox, id, { status: 'expired' });
+    const settled = submitQuestionResponse(item.inbox, id, { status: 'expired' });
+    if (settled === 'deferred') {
+      item.deferred = true;
+      emit(turnID, { kind: KindQuestionDeferred, question: { id, deferred: true } });
+      continue;
+    }
     pending.delete(id);
     emit(turnID, { kind: KindQuestionResolved, question: { id, status: 'expired' } });
   }

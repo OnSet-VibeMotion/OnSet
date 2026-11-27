@@ -124,20 +124,87 @@ describe('studio questions API & lifecycle', () => {
         ),
       ).toBe(true);
 
-      // 模拟客户端重启清空内存 pending：仍可从持久化事件流找回并提交 skipped。
-      sess.questions.clear();
-      const restored = findDeferredQuestion(getSession(server, project, sess.meta.session_id)!.events, defReq.id);
-      expect(restored?.deferred).toBe(true);
+      // 真实重启恢复：关闭原 Server 并用同一配置与项目新建 Server，从落盘事件恢复 deferred 问题。
+      server.shutdown();
+      const restarted = startStudio({ configPath: path.join(root, 'studio.json'), projectPath: project });
+      try {
+        const reloaded = getSession(restarted, project, sess.meta.session_id)!;
+        const restored = findDeferredQuestion(reloaded.events, defReq.id);
+        expect(restored?.deferred).toBe(true);
 
-      const skipped = await send(
+        // 非法 view 必须在消费问题前被 400 拒绝，问题仍保持可答。
+        const badView = await send(
+          restarted,
+          'POST',
+          `/api/sessions/${sess.meta.session_id}/questions/${defReq.id}`,
+          JSON.stringify({
+            status: 'answered',
+            answers: [{ question_id: 'style', selected: ['科技'] }],
+            view: ['not-an-object'],
+          }),
+        );
+        expect(badView.status).toBe(400);
+        expect(findDeferredQuestion(reloaded.events, defReq.id)).not.toBeNull();
+
+        // 项目写权被占用时续接失败（409 project_busy），问题不得被消费丢失。
+        const busyPath = restarted.currentProject().path;
+        restarted.acquire(busyPath, '渲染中');
+        try {
+          const busy = await send(
+            restarted,
+            'POST',
+            `/api/sessions/${sess.meta.session_id}/questions/${defReq.id}`,
+            JSON.stringify({ status: 'answered', answers: [{ question_id: 'style', selected: ['科技'] }] }),
+          );
+          expect(busy.status).toBe(409);
+          expect(findDeferredQuestion(reloaded.events, defReq.id)).not.toBeNull();
+        } finally {
+          restarted.release(busyPath);
+        }
+
+        const skipped = await send(
+          restarted,
+          'POST',
+          `/api/sessions/${sess.meta.session_id}/questions/${defReq.id}`,
+          JSON.stringify({ status: 'skipped' }),
+        );
+        expect(skipped.status).toBe(200);
+        expect(await skipped.json()).toEqual({ ok: true, mode: 'deferred' });
+        expect(findDeferredQuestion(reloaded.events, defReq.id)).toBeNull();
+      } finally {
+        restarted.shutdown();
+      }
+    } finally {
+      server.shutdown();
+    }
+  });
+
+  it('switches to deferred continuation when timeout wins the disk claim before pollQuestions runs', async () => {
+    const { root, project, server } = makeServer();
+    try {
+      const sess = createSession(server, project, 'chat', '竞态测试', { tool: 'claude', renderer: 'claude' });
+      const inbox = path.join(root, 'inbox-race');
+      const req = writeQuestionRequest(inbox, {
+        questions: [{ id: 'q1', header: '风格', question: '选哪种？', options: ['A', 'B'] }],
+      });
+      const seen = new Set<string>();
+      const deferredSeen = new Set<string>();
+      pollQuestions(inbox, 't1', sess.questions, seen, deferredSeen, (turn, event) => emit(sess, turn, event));
+
+      // 工具端先写入超时移交标记，但服务端尚未再次 pollQuestions（内存中 item.deferred 仍为 false）。
+      expect(writeQuestionDeferred(inbox, req.id)).toBe(true);
+      expect(sess.questions.get(req.id)?.deferred).toBe(false);
+
+      // 前端提交 skipped：必须识别磁盘协调状态并走 deferred 模式，不写死掉的 live response。
+      const res = await send(
         server,
         'POST',
-        `/api/sessions/${sess.meta.session_id}/questions/${defReq.id}`,
+        `/api/sessions/${sess.meta.session_id}/questions/${req.id}`,
         JSON.stringify({ status: 'skipped' }),
       );
-      expect(skipped.status).toBe(200);
-      expect(await skipped.json()).toEqual({ ok: true, mode: 'deferred' });
-      expect(findDeferredQuestion(sess.events, defReq.id)).toBeNull();
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true, mode: 'deferred' });
+      expect(fs.existsSync(path.join(inbox, 'questions', `${req.id}.response.json`))).toBe(false);
     } finally {
       server.shutdown();
     }

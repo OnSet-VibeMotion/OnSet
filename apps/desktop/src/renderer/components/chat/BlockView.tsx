@@ -124,16 +124,16 @@ function TurnView(props: BlockProps & { turn: TurnBlock }) {
           onPick={props.onChoice}
         />
       )}
-      {proseQuestions && !answered && (
+      {proseQuestions && (
         <QuestionCard
           ask={proseQuestions}
-          disabled={!props.choicesEnabled}
+          disabled={!props.choicesEnabled || answered}
           onSubmit={(payload) => {
             if (payload.status === 'answered' && payload.answers) {
               props.onChoice(formatQuestionAnswersForChat(proseQuestions, payload.answers, payload.note));
             }
           }}
-          onSkip={props.onFocusComposer}
+          onSkip={answered ? undefined : props.onFocusComposer}
         />
       )}
       {choices.length > 0 && (

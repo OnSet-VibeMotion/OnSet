@@ -81,8 +81,9 @@ export function turnActivity(
       detail: asks[0].description || '请处理下方的操作请求',
     };
   }
-  if (questions.length > 0) {
-    const first = questions[0];
+  const blockingQuestions = questions.filter((q) => !q.deferred);
+  if (blockingQuestions.length > 0) {
+    const first = blockingQuestions[0];
     return {
       ...state,
       phase: 'question',

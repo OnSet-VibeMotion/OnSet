@@ -139,4 +139,34 @@ describe('studioview questions schema & inbox', () => {
     setTimeout(() => controller.abort(), 15);
     expect(await waitQuestionResponse(tmp, req2.id, 10, controller.signal, 5000)).toEqual({ kind: 'aborted' });
   });
+
+  it('rejects selected values outside declared options and handles prototype-key question ids safely', () => {
+    const req = writeQuestionRequest(tmp, {
+      questions: [
+        { id: 'constructor', header: '构造', question: '选一个', allow_other: false, options: ['A', 'B'] },
+        { id: '__proto__', header: '原型', question: '再选一个', options: ['X', 'Y'] },
+      ],
+    });
+    expect(() =>
+      normalizeQuestionResponse(req, {
+        status: 'answered',
+        answers: [
+          { question_id: 'constructor', selected: ['C'] },
+          { question_id: '__proto__', selected: ['X'] },
+        ],
+      }),
+    ).toThrow(/无效选项：C/);
+
+    const ok = normalizeQuestionResponse(req, {
+      status: 'answered',
+      answers: [
+        { question_id: 'constructor', selected: ['A'] },
+        { question_id: '__proto__', selected: ['Y'] },
+      ],
+    });
+    expect(Object.hasOwn(ok.answer_map!, 'constructor')).toBe(true);
+    expect(ok.answer_map!.constructor).toBe('A');
+    expect(Object.hasOwn(ok.answer_map!, '__proto__')).toBe(true);
+    expect(ok.answer_map!['__proto__']).toBe('Y');
+  });
 });

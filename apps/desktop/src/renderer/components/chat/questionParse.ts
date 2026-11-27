@@ -151,14 +151,19 @@ export function parseQuestionsBlock(text: string, stableId = 'prose'): QuestionA
   return { id: `prose-${stableId}`, questions: questions.slice(0, 6), source: 'prose' };
 }
 
-/** 剥离回复正文里合法的 ```questions 代码块（解析失败的保留原样）。 */
+/** 仅剥离回复正文里被 parseQuestionsBlock 接管展示的第一块合法 ```questions 代码块，其余块与畸形块保留原文。 */
 export function stripValidQuestions(text: string): string {
+  let stripped = false;
   return text.replace(questionsFence, (full, body: string) => {
+    if (stripped) return full;
     try {
       const parsed = JSON.parse(body) as unknown;
       const obj = asObj(parsed);
       const list = Array.isArray(parsed) ? parsed : Array.isArray(obj.questions) ? obj.questions : null;
-      if (list && normalizeItems(list).length > 0) return '';
+      if (list && normalizeItems(list).length > 0) {
+        stripped = true;
+        return '';
+      }
     } catch {
       // 保留畸形块。
     }

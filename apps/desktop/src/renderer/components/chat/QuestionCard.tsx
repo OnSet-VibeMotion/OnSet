@@ -1,12 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from 'react';
 import './question.css';
-import type { QuestionAnswerItem, QuestionAsk, QuestionItem, QuestionSubmitPayload } from '../../types';
+import type { QuestionAsk, QuestionItem, QuestionSubmitPayload } from '../../types';
 import { Icon } from '../Icon';
 import {
+  buildQuestionAnswers,
   clearQuestionDraft,
+  draftOtherActive,
+  draftOtherText,
+  draftSelected,
   isQuestionAnswered,
   loadQuestionDraft,
   type QuestionDraft,
+  radioStepForKey,
   saveQuestionDraft,
 } from './questionDraft';
 
@@ -28,8 +33,9 @@ export function QuestionCard(props: QuestionCardProps) {
   const [showNote, setShowNote] = useState(() => draft.note !== '');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const otherInputs = useRef<Record<string, HTMLInputElement | null>>({});
-  const sections = useRef<Record<string, HTMLElement | null>>({});
+  const otherInputs = useRef(new Map<string, HTMLInputElement>());
+  const sections = useRef(new Map<string, HTMLElement>());
+  const radioButtons = useRef(new Map<string, HTMLButtonElement>());
 
   useEffect(() => {
     const next = loadQuestionDraft(ask.id);
@@ -58,15 +64,15 @@ export function QuestionCard(props: QuestionCardProps) {
     setActiveIdx(index);
     if (mode === 'all') {
       const id = ask.questions[index]?.id;
-      if (id) sections.current[id]?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+      if (id) sections.current.get(id)?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
     }
   };
 
-  const toggleOption = (q: QuestionItem, label: string, index: number) => {
+  const toggleOption = (q: QuestionItem, label: string, index: number, advance = true) => {
     if (disabled || submitting) return;
     setError('');
     setDraft((prev) => {
-      const current = prev.selected[q.id] ?? [];
+      const current = draftSelected(prev, q.id);
       if (q.multi_select) {
         const next = current.includes(label) ? current.filter((item) => item !== label) : [...current, label];
         return { ...prev, selected: { ...prev.selected, [q.id]: next } };
@@ -77,22 +83,34 @@ export function QuestionCard(props: QuestionCardProps) {
         otherActive: { ...prev.otherActive, [q.id]: false },
       };
     });
-    if (!q.multi_select && mode === 'step' && index < total - 1) {
+    if (advance && !q.multi_select && mode === 'step' && index < total - 1) {
       const nextUnanswered = ask.questions.findIndex((other, i) => i > index && !isQuestionAnswered(other, draft));
       if (nextUnanswered >= 0) setActiveIdx(nextUnanswered);
     }
   };
 
-  const toggleOther = (q: QuestionItem) => {
+  const toggleOther = (q: QuestionItem, focusInput = true) => {
     if (disabled || submitting) return;
     setError('');
-    const willEnable = q.multi_select ? !draft.otherActive[q.id] : true;
+    const willEnable = q.multi_select ? !draftOtherActive(draft, q.id) : true;
     setDraft((prev) => ({
       ...prev,
       selected: q.multi_select ? prev.selected : { ...prev.selected, [q.id]: [] },
       otherActive: { ...prev.otherActive, [q.id]: willEnable },
     }));
-    if (willEnable) window.setTimeout(() => otherInputs.current[q.id]?.focus(), 0);
+    if (willEnable && focusInput) window.setTimeout(() => otherInputs.current.get(q.id)?.focus(), 0);
+  };
+
+  const handleRadioKeyDown = (event: KeyboardEvent, q: QuestionItem, qIdx: number, radioIdx: number) => {
+    if (q.multi_select || disabled || submitting) return;
+    const step = radioStepForKey(event.key);
+    if (step === 0) return;
+    event.preventDefault();
+    const count = q.options.length + (q.allow_other !== false ? 1 : 0);
+    const nextIdx = (radioIdx + step + count) % count;
+    radioButtons.current.get(`${q.id}\u0000${nextIdx}`)?.focus();
+    if (nextIdx < q.options.length) toggleOption(q, q.options[nextIdx].label, qIdx, false);
+    else toggleOther(q, false);
   };
 
   const changeOtherText = (q: QuestionItem, value: string) => {
@@ -100,7 +118,7 @@ export function QuestionCard(props: QuestionCardProps) {
     setDraft((prev) => ({
       ...prev,
       selected: !q.multi_select && value.trim() !== '' ? { ...prev.selected, [q.id]: [] } : prev.selected,
-      otherActive: { ...prev.otherActive, [q.id]: value.trim() !== '' ? true : !!prev.otherActive[q.id] },
+      otherActive: { ...prev.otherActive, [q.id]: value.trim() !== '' ? true : draftOtherActive(prev, q.id) },
       otherText: { ...prev.otherText, [q.id]: value },
     }));
   };
@@ -114,16 +132,7 @@ export function QuestionCard(props: QuestionCardProps) {
       if (idx >= 0) focusQuestion(idx);
       return;
     }
-    const answers: QuestionAnswerItem[] = ask.questions.map((q) => {
-      const other = q.allow_other === false ? '' : draft.otherActive[q.id] ? (draft.otherText[q.id] ?? '').trim() : '';
-      const selected = !q.multi_select && other !== '' ? [] : (draft.selected[q.id] ?? []);
-      return {
-        question_id: q.id,
-        label: q.header || q.question,
-        selected,
-        ...(other ? { other } : {}),
-      };
-    });
+    const answers = buildQuestionAnswers(ask.questions, draft);
     setSubmitting(true);
     setError('');
     try {
@@ -218,16 +227,21 @@ export function QuestionCard(props: QuestionCardProps) {
       <div className="q-body">
         {visibleQuestions.map((q) => {
           const index = ask.questions.findIndex((item) => item.id === q.id);
-          const picked = draft.selected[q.id] ?? [];
-          const otherOn = !!draft.otherActive[q.id];
-          const otherVal = draft.otherText[q.id] ?? '';
+          const picked = draftSelected(draft, q.id);
+          const otherOn = draftOtherActive(draft, q.id);
+          const otherVal = draftOtherText(draft, q.id);
+          const selectedRadioIdx = otherOn
+            ? q.options.length
+            : q.options.findIndex((opt) => picked.includes(opt.label));
+          const focusableRadioIdx = selectedRadioIdx >= 0 ? selectedRadioIdx : 0;
           return (
             <div
               key={q.id}
               className="q-item"
               data-question-item={q.id}
               ref={(el) => {
-                sections.current[q.id] = el;
+                if (el) sections.current.set(q.id, el);
+                else sections.current.delete(q.id);
               }}
             >
               <div className="q-item-head">
@@ -241,17 +255,24 @@ export function QuestionCard(props: QuestionCardProps) {
                 </span>
               </div>
               <div className="q-options" role={q.multi_select ? 'group' : 'radiogroup'} aria-label={q.question}>
-                {q.options.map((opt) => {
+                {q.options.map((opt, optIdx) => {
                   const checked = picked.includes(opt.label);
+                  const rKey = `${q.id}\u0000${optIdx}`;
                   return (
                     <button
                       key={opt.label}
+                      ref={(el) => {
+                        if (el) radioButtons.current.set(rKey, el);
+                        else radioButtons.current.delete(rKey);
+                      }}
                       type="button"
                       role={q.multi_select ? 'checkbox' : 'radio'}
                       aria-checked={checked}
+                      tabIndex={q.multi_select ? undefined : optIdx === focusableRadioIdx ? 0 : -1}
                       disabled={disabled || submitting}
                       className={'q-opt' + (checked ? ' selected' : '')}
                       onClick={() => toggleOption(q, opt.label, index)}
+                      onKeyDown={(e) => handleRadioKeyDown(e, q, index, optIdx)}
                     >
                       <span className={'q-mark ' + (q.multi_select ? 'box' : 'dot')} aria-hidden="true">
                         {checked && (q.multi_select ? <Icon name="check" size={10} /> : <i />)}
@@ -269,12 +290,19 @@ export function QuestionCard(props: QuestionCardProps) {
                 {q.allow_other !== false && (
                   <div className={'q-other' + (otherOn ? ' selected' : '')}>
                     <button
+                      ref={(el) => {
+                        const rKey = `${q.id}\u0000${q.options.length}`;
+                        if (el) radioButtons.current.set(rKey, el);
+                        else radioButtons.current.delete(rKey);
+                      }}
                       type="button"
                       role={q.multi_select ? 'checkbox' : 'radio'}
                       aria-checked={otherOn}
+                      tabIndex={q.multi_select ? undefined : q.options.length === focusableRadioIdx ? 0 : -1}
                       disabled={disabled || submitting}
                       className="q-other-trigger"
                       onClick={() => toggleOther(q)}
+                      onKeyDown={(e) => handleRadioKeyDown(e, q, index, q.options.length)}
                     >
                       <span className={'q-mark ' + (q.multi_select ? 'box' : 'dot')} aria-hidden="true">
                         {otherOn && (q.multi_select ? <Icon name="check" size={10} /> : <i />)}
@@ -284,7 +312,8 @@ export function QuestionCard(props: QuestionCardProps) {
                     {otherOn && (
                       <input
                         ref={(el) => {
-                          otherInputs.current[q.id] = el;
+                          if (el) otherInputs.current.set(q.id, el);
+                          else otherInputs.current.delete(q.id);
                         }}
                         type="text"
                         className="q-other-input"
@@ -316,7 +345,12 @@ export function QuestionCard(props: QuestionCardProps) {
           />
         </div>
       ) : (
-        <button type="button" className="link q-add-note" onClick={() => setShowNote(true)}>
+        <button
+          type="button"
+          className="link q-add-note"
+          disabled={disabled || submitting}
+          onClick={() => setShowNote(true)}
+        >
           + 添加补充说明（可选）
         </button>
       )}

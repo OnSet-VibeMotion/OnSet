@@ -180,6 +180,12 @@ describe('global static compact mode, unified tool_search, and tool_call', () =>
         },
         { id: 7, method: 'tools/call', params: { name: ToolSearchName, arguments: { query: '*' } } },
         { id: 8, method: 'tools/call', params: { name: ToolSearchName, arguments: { query: '批注' } } },
+        // 通配 query="*" 同时指定 category 时只返回该领域工具。
+        {
+          id: 12,
+          method: 'tools/call',
+          params: { name: ToolSearchName, arguments: { query: '*', category: 'brand_kit' } },
+        },
         // 旧别名 tool_help 永久静默兼容。
         { id: 9, method: 'tools/call', params: { name: LegacyToolHelpName, arguments: { tool: 'sfx_search' } } },
         { id: 10, method: 'tools/call', params: { name: LegacyToolHelpName, arguments: { tool: '*' } } },
@@ -225,6 +231,11 @@ describe('global static compact mode, unified tool_search, and tool_call', () =>
 
     // 中文关键词「批注」。
     expect(replies.get(8).result.content[0].text).toContain('review_comments_add');
+
+    // query="*" + category 仅返回指定领域，不返回无关领域。
+    const wildcardCat = replies.get(12).result.content[0].text;
+    expect(wildcardCat).toContain('brand_kit_list');
+    expect(wildcardCat).not.toContain('voice_synthesize');
 
     // 旧别名 tool_help 静默兼容。
     expect(replies.get(9).result.isError).toBe(false);

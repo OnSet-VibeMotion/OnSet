@@ -207,10 +207,15 @@ export function normalizeQuestionResponse(req: QuestionRequest, raw: unknown): Q
     }
   }
   const answers: QuestionAnswerItem[] = [];
-  const answerMap: Record<string, string | string[]> = {};
+  const answerMap = Object.create(null) as Record<string, string | string[]>;
   for (const q of req.questions) {
     const picked = byID.get(q.id) ?? { selected: [], other: '' };
     const selected = q.multi_select ? [...new Set(picked.selected)] : picked.selected.slice(0, 1);
+    const allowed = new Set(q.options.map((opt) => opt.label));
+    const invalid = selected.find((val) => !allowed.has(val));
+    if (invalid !== undefined) {
+      throw new Error(`「${q.header || q.question}」包含无效选项：${invalid}`);
+    }
     const other = q.allow_other === false ? '' : picked.other;
     if (q.required !== false && selected.length === 0 && other === '') {
       throw new Error(`请先回答「${q.header || q.question}」`);
@@ -219,10 +224,14 @@ export function normalizeQuestionResponse(req: QuestionRequest, raw: unknown): Q
     answers.push({ question_id: q.id, label: q.header || q.question, selected, ...(other ? { other } : {}) });
     if (q.multi_select) {
       const vals = [...selected, ...(other ? [other] : [])];
-      if (vals.length > 0) answerMap[q.id] = vals;
+      if (vals.length > 0) {
+        Object.defineProperty(answerMap, q.id, { value: vals, enumerable: true, writable: true, configurable: true });
+      }
     } else {
       const val = other || selected[0] || '';
-      if (val !== '') answerMap[q.id] = val;
+      if (val !== '') {
+        Object.defineProperty(answerMap, q.id, { value: val, enumerable: true, writable: true, configurable: true });
+      }
     }
   }
   return { status: 'answered', answers, answer_map: answerMap, ...(note ? { note } : {}) };
