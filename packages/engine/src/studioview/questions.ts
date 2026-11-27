@@ -161,8 +161,7 @@ export function submitQuestionResponse(inbox: string, id: string, response: Ques
         throw err;
       }
     }
-    if (claim === 'missing') return 'already_answered';
-    if (claim === 'live' && fs.existsSync(target)) return 'already_answered';
+    if (claim === 'live' || claim === 'missing') return 'already_answered';
     return 'deferred';
   } finally {
     try {

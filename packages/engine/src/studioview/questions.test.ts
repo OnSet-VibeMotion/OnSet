@@ -195,5 +195,12 @@ describe('studioview questions schema & inbox', () => {
     const req2 = writeQuestionRequest(tmp, { questions: [{ question: '未知标记', options: ['X', 'Y'] }] });
     fs.writeFileSync(path.join(questionsDir(tmp), `${req2.id}.settled.json`), '');
     expect(submitQuestionResponse(tmp, req2.id, { status: 'answered', answer_map: { q1: 'X' } })).toBe('deferred');
+
+    // 已有完整 live 归属标记（模拟另一进程正在 rename 落盘中）：并发提交必须返回 already_answered，不得误报 deferred 双重投递。
+    const req3 = writeQuestionRequest(tmp, { questions: [{ question: '并发 live', options: ['M', 'N'] }] });
+    fs.writeFileSync(path.join(questionsDir(tmp), `${req3.id}.settled.json`), '{"by":"live"}\n');
+    expect(submitQuestionResponse(tmp, req3.id, { status: 'answered', answer_map: { q1: 'M' } })).toBe(
+      'already_answered',
+    );
   });
 });
