@@ -4,14 +4,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import * as align from '@onset/engine/align';
-import * as reads from '@onset/engine/reads';
 import { atomicWrite } from '@onset/engine/fsutil';
 import { formatFixed } from '@onset/engine/gofmt';
+import * as reads from '@onset/engine/reads';
+import { alignRunOperation } from './align_run';
 import { ExitError } from './cobra';
 import { defineGroup } from './ops/cli';
 import { num, projectRoot, str, strs } from './ops/common';
 import { defineOp } from './ops/op';
-import { alignRunOperation } from './align_run';
 
 defineGroup({
   path: ['align'],
@@ -41,6 +41,19 @@ const alignRoot = { ...projectRoot, description: '项目根目录，用于定位
 
 defineOp(alignRunOperation());
 
+function canonicalPath(filePath: string): string {
+  const resolved = path.resolve(filePath);
+  try {
+    return fs.realpathSync(resolved);
+  } catch {
+    try {
+      return path.join(fs.realpathSync(path.dirname(resolved)), path.basename(resolved));
+    } catch {
+      return resolved;
+    }
+  }
+}
+
 /** 参数为空时取项目里的缺省路径。 */
 function inProject(root: string, value: unknown, fallback: string): string {
   return str(value) !== '' ? str(value) : path.join(root, fallback);
@@ -59,7 +72,10 @@ defineOp({
 声音事件发出的是笑声、叹气，不是字，留在对齐文本里会让对齐工具把它们当字硬塞进去。
 没有声音事件时两份内容相同。TTS 与强制对齐都必须用这两份文本，align_build() 才能
 逐字对回终稿。标记写错时报出行号与列号。`,
-  examples: ['align_text()', 'align_text({"script": "production/script-final.md", "out": "production/audio/tts-text.txt"})'],
+  examples: [
+    'align_text()',
+    'align_text({"script": "production/script-final.md", "out": "production/audio/tts-text.txt"})',
+  ],
   params: {
     script: { type: 'string', description: '终稿，缺省为 <project_root>/production/script-final.md' },
     out: { type: 'string', description: '朗读文本输出，缺省为 <project_root>/production/audio/tts-text.txt' },
@@ -73,23 +89,39 @@ defineOp({
     if (spoken === '') throw new Error('终稿没有任何朗读内容');
     const out = inProject(root, p.out, 'production/audio/tts-text.txt');
     atomicWrite(out, spoken, 0o644);
-    const alignOut = str(p.align_out) !== '' ? inProject(root, p.align_out, '') : path.join(path.dirname(out), 'align-text.txt');
+    const alignOut =
+      str(p.align_out) !== '' ? inProject(root, p.align_out, '') : path.join(path.dirname(out), 'align-text.txt');
     atomicWrite(alignOut, script.alignText(), 0o644);
     const events = script.hasVocalEvents() ? '，声音事件已从对齐文本里去掉' : '';
     const hints: string[] = [];
     if (script.tokens.length >= 60 && script.phrases.length === 0) {
-      hints.push('终稿里还没有标注受保护短语（@{id}…@{/id}）：专有名词、产品名、模型名与关键概念建议标上，字幕折行与时间轴才能保护它们不被拆分');
+      hints.push(
+        '终稿里还没有标注受保护短语（@{id}…@{/id}）：专有名词、产品名、模型名与关键概念建议标上，字幕折行与时间轴才能保护它们不被拆分',
+      );
     }
     for (const span of script.phrases) {
       const display = script.displayText(span.startPiece, span.endPiece);
       const u = reads.units(display);
       if (u > 16) {
-        hints.push(`受保护短语 ${span.id} 偏长（${u} 阅读单位：「${display.slice(0, 16)}…」）：建议收窄到 2–12 字核心词/短语，否则单行字幕放不下仍会被强拆`);
+        hints.push(
+          `受保护短语 ${span.id} 偏长（${u} 阅读单位：「${display.slice(0, 16)}…」）：建议收窄到 2–12 字核心词/短语，否则单行字幕放不下仍会被强拆`,
+        );
       }
     }
-    w.write(`已写出朗读文本：${out}（${script.tokens.length} 个朗读单元，${script.phrases.length} 个受保护短语）\n已写出对齐文本：${alignOut}${events}\n`);
+    w.write(
+      `已写出朗读文本：${out}（${script.tokens.length} 个朗读单元，${script.phrases.length} 个受保护短语）\n已写出对齐文本：${alignOut}${events}\n`,
+    );
     for (const hint of hints) w.write(`提示：${hint}\n`);
-    return { data: { out, align_out: alignOut, tokens: script.tokens.length, phrases: script.phrases.length, vocal_events: script.hasVocalEvents(), ...(hints.length > 0 ? { hints } : {}) } };
+    return {
+      data: {
+        out,
+        align_out: alignOut,
+        tokens: script.tokens.length,
+        phrases: script.phrases.length,
+        vocal_events: script.hasVocalEvents(),
+        ...(hints.length > 0 ? { hints } : {}),
+      },
+    };
   },
 });
 
@@ -97,7 +129,8 @@ defineOp({
   name: 'align_build',
   cli: ['align', 'build'],
   summary: '把对齐结果映射回终稿，写出 voice.srt 与 phrase-timeline.json',
-  description: `用动态规划把终稿朗读单元与对齐结果逐个配对（一个汉字、一个英文词或一个数是一个
+  description:
+    `用动态规划把终稿朗读单元与对齐结果逐个配对（一个汉字、一个英文词或一个数是一个
 单元），配对分组最多 4 对 4，每个单元带一个标签：
   exact               一对一，文本相同
   split / merge       分段不同但拼起来文本相同（例如 API 被对成 A、P、I）
@@ -108,8 +141,8 @@ defineOp({
 对齐结果（align，可给多个）：
   格式没有逐一实测，读取是宽容的。认得的形状：
     规范形状  ` +
-      align.CanonicalShape +
-      `
+    align.CanonicalShape +
+    `
     funasr    [{"text":"空格 分隔 的 字","timestamp":[[起毫秒,止毫秒],...]}]
     其他      JSON 中第一个「每个元素都有 text/word/char/token 与数值起止」的对象数组，
               起止字段 start/end、start_time/end_time 按秒，start_ms/end_ms 按毫秒
@@ -148,10 +181,19 @@ defineOp({
   params: {
     fps: { type: 'integer', description: '帧率，必须与 frame.md 的 canvas.fps 一致' },
     script: { type: 'string', description: '终稿，缺省为 <project_root>/production/script-final.md' },
-    align: { type: 'strings', description: '对齐结果 文件[@偏移秒数]，可给多个，按顺序拼接；缺省为 <project_root>/production/audio/align.json' },
-    adjust: { type: 'string', description: '短语边界修正层，缺省为 <project_root>/production/phrase-adjust.json（不存在则跳过）' },
+    align: {
+      type: 'strings',
+      description: '对齐结果 文件[@偏移秒数]，可给多个，按顺序拼接；缺省为 <project_root>/production/audio/align.json',
+    },
+    adjust: {
+      type: 'string',
+      description: '短语边界修正层，缺省为 <project_root>/production/phrase-adjust.json（不存在则跳过）',
+    },
     srt_out: { type: 'string', description: '字幕输出，缺省为 <project_root>/production/audio/voice.srt' },
-    phrases_out: { type: 'string', description: '短语时间轴输出，缺省为 <project_root>/production/phrase-timeline.json' },
+    phrases_out: {
+      type: 'string',
+      description: '短语时间轴输出，缺省为 <project_root>/production/phrase-timeline.json',
+    },
     report_json: { type: 'string', description: '报告输出，缺省为 <project_root>/production/audio/align-report.json' },
     project_root: alignRoot,
   },
@@ -161,8 +203,10 @@ defineOp({
     if (fps <= 0) throw new Error('fps 必须是正整数，与 frame.md 的 canvas.fps 一致');
     const script = align.loadProjectScript(root, inProject(root, p.script, 'production/script-final.md'));
     const alignFlags = strs(p.align);
-    const flags = alignFlags.length ? alignFlags : [path.join(root, 'production/audio/align.json')];
-    const items = align.loadSegments(flags.map((value) => align.parseSegmentFlag(value)));
+    const defaultAlign = path.join(root, 'production/audio/align.json');
+    const flags = alignFlags.length ? alignFlags : [defaultAlign];
+    const segments = flags.map((value) => align.parseSegmentFlag(value));
+    const items = align.loadSegments(segments);
     const opts: align.Options = { fps };
     const explicitAdjust = str(p.adjust) !== '';
     const adjust = inProject(root, p.adjust, 'production/phrase-adjust.json');
@@ -177,11 +221,44 @@ defineOp({
     const reportJSON = align.reportToJSON(result.report);
     align.writeJSON(report, reportJSON);
     const r = result.report;
+    const isDefaultSRT = canonicalPath(srt) === canonicalPath(path.join(root, 'production/audio/voice.srt'));
+    const alreadyCanonical =
+      segments.length === 1 &&
+      segments[0].offset === 0 &&
+      canonicalPath(segments[0].path) === canonicalPath(defaultAlign);
+    let canonicalAlign: string | undefined;
+    if (r.ok && isDefaultSRT && items.length > 0 && !alreadyCanonical) {
+      const roundSec = (value: number) => Math.round(value * 1_000_000) / 1_000_000;
+      align.writeJSON(
+        defaultAlign,
+        items.map(({ text, start, end }) => ({ text, start: roundSec(start), end: roundSec(end) })),
+      );
+      canonicalAlign = defaultAlign;
+    }
     const labels = align.sortedLabels(r).map((label) => `${label} ${r.labels[label]}`);
-    out.write(`已写出 ${srt}（${result.cues.length} 条字幕）、${phrases}（${result.timeline.phrases?.length ?? 0} 个短语）、${report}\n`);
-    out.write(`朗读单元 ${r.tokens} 个，匹配率 ${formatFixed(r.match_rate * 100, 1)}%（${labels.join('，')}），共 ${r.total_frames} 帧\n`);
+    out.write(
+      `已写出 ${srt}（${result.cues.length} 条字幕）、${phrases}（${result.timeline.phrases?.length ?? 0} 个短语）、${report}\n`,
+    );
+    out.write(
+      `朗读单元 ${r.tokens} 个，匹配率 ${formatFixed(r.match_rate * 100, 1)}%（${labels.join('，')}），共 ${r.total_frames} 帧\n`,
+    );
     for (const hint of r.hints ?? []) out.write(`提示：${hint}\n`);
-    if (!r.ok) throw new ExitError(1, `对齐映射未通过（产物已写出，详见 ${report}）：\n  - ${(r.problems ?? []).join('\n  - ')}`);
-    return { data: { srt, phrases, report, cues: result.cues.length, match_rate: r.match_rate, total_frames: r.total_frames, hints: r.hints ?? [] } };
+    if (!r.ok)
+      throw new ExitError(
+        1,
+        `对齐映射未通过（产物已写出，详见 ${report}）：\n  - ${(r.problems ?? []).join('\n  - ')}`,
+      );
+    return {
+      data: {
+        srt,
+        phrases,
+        report,
+        ...(canonicalAlign ? { align: canonicalAlign } : {}),
+        cues: result.cues.length,
+        match_rate: r.match_rate,
+        total_frames: r.total_frames,
+        hints: r.hints ?? [],
+      },
+    };
   },
 });

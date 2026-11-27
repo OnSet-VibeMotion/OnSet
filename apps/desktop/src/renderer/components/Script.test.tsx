@@ -26,7 +26,11 @@ const base: ScriptResponse = {
 /** 后端给的配音：没有字幕与对齐时 seconds 为 0、按时长估算逐字时间。 */
 function withAudio(path: string): ScriptResponse {
   const name = path.split('/').pop()!;
-  return { ...base, voice: { path, name, version: 1, seconds: 0, timing: 'estimated' }, audio_options: [{ path, name, version: 1 }] };
+  return {
+    ...base,
+    voice: { path, name, version: 1, seconds: 0, timing: 'estimated' },
+    audio_options: [{ path, name, version: 1 }],
+  };
 }
 
 const originalPlay = HTMLMediaElement.prototype.play;
@@ -49,7 +53,8 @@ function audioElement(): HTMLAudioElement {
 
 /** 让 <audio> 报出时长与播放位置（jsdom 里这两个属性是只读的 0）。 */
 function setMedia(el: HTMLAudioElement, values: { duration?: number; currentTime?: number; readyState?: number }) {
-  for (const [key, value] of Object.entries(values)) Object.defineProperty(el, key, { configurable: true, writable: true, value });
+  for (const [key, value] of Object.entries(values))
+    Object.defineProperty(el, key, { configurable: true, writable: true, value });
 }
 
 test('subtitles alone are not playable, unreadable audio says so, and versioned audio works without subtitles', async () => {
@@ -64,7 +69,9 @@ test('subtitles alone are not playable, unreadable audio says so, and versioned 
   // 读不了的音频文件：照实说放不了，不当成没有配音。
   api.set('/api/script', withAudio('production/audio/voice.wav'));
   rerender(<ScriptTab version={2} {...props} />);
-  await waitFor(() => expect(audioElement().getAttribute('src')).toContain(encodeURIComponent('production/audio/voice.wav')));
+  await waitFor(() =>
+    expect(audioElement().getAttribute('src')).toContain(encodeURIComponent('production/audio/voice.wav')),
+  );
   fireEvent.error(audioElement());
   expect((await screen.findByRole('alert')).textContent).toContain('音频无法播放');
   expect(screen.queryByText('还没有找到配音音频，生成后可在这里试听。')).toBeNull();
@@ -138,4 +145,53 @@ test('original drafts offer dialogue conversion without offering voice approval'
   render(<ScriptTab version={1} busy="" onQuick={vi.fn()} onFile={vi.fn()} onAttach={vi.fn()} />);
   await screen.findByRole('button', { name: '改为多人对话' });
   expect(screen.queryByRole('button', { name: '确认，开始配音' })).toBeNull();
+});
+
+test('uses server-provided timings for subtitled and segmented playback without falling back to linear estimation', async () => {
+  const timedBlocks: ScriptResponse['blocks'] = [
+    {
+      kind: 'para',
+      nodes: [
+        {
+          kind: 'text',
+          text: '你好世界',
+          timings: [
+            { start: 0.5, end: 1.0 },
+            { start: 1.0, end: 1.5 },
+            { start: 5.0, end: 6.0 },
+            { start: 6.0, end: 7.0 },
+          ],
+        },
+      ],
+    },
+  ];
+  const api = mockApi({
+    '/api/script': {
+      ...withAudio('production/audio/voice.wav'),
+      blocks: timedBlocks,
+      voice: { ...withAudio('production/audio/voice.wav').voice!, seconds: 10, timing: 'subtitled' },
+    },
+  });
+  const props = { busy: '', onQuick: vi.fn(), onFile: vi.fn(), onAttach: vi.fn() };
+  const { rerender } = render(<ScriptTab version={1} {...props} />);
+  await screen.findByText(/按字幕逐句跟读/);
+  const audio = audioElement();
+  setMedia(audio, { duration: 10, currentTime: 5.2, readyState: 4 });
+  act(() => {
+    fireEvent.loadedMetadata(audio);
+    fireEvent.timeUpdate(audio);
+  });
+  // 如果误退回线性估算（10s/4字 = 2.5s/字），5.2s 会亮「世」但 data-start 会被改成 5；这里检查第 2 字起点仍保持后端给的 1.0 而非 2.5。
+  const chars = document.querySelectorAll<HTMLElement>('.script-char');
+  expect(Number(chars[1].dataset.start)).toBe(1);
+  expect(document.querySelector('.script-char.now')?.textContent).toBe('世');
+
+  api.set('/api/script', {
+    ...withAudio('production/audio/voice.wav'),
+    blocks: timedBlocks,
+    voice: { ...withAudio('production/audio/voice.wav').voice!, seconds: 10, timing: 'segmented' },
+  });
+  rerender(<ScriptTab version={2} {...props} />);
+  await screen.findByText(/按配音段落跟读/);
+  expect(Number(document.querySelectorAll<HTMLElement>('.script-char')[1].dataset.start)).toBe(1);
 });

@@ -138,7 +138,7 @@ export interface ScriptResponse {
     name: string;
     version: number;
     seconds: number;
-    timing: 'aligned' | 'estimated' | 'dialogue';
+    timing: 'aligned' | 'subtitled' | 'segmented' | 'estimated' | 'dialogue';
   };
   audio_options?: { path: string; name: string; version: number }[];
   dialogue?: {
