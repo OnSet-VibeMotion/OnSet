@@ -151,6 +151,16 @@ export function parseQuestionsBlock(text: string, stableId = 'prose'): QuestionA
   return { id: `prose-${stableId}`, questions: questions.slice(0, 6), source: 'prose' };
 }
 
+/** 仅剥离被 parseQuestionsBlock 从多块 ```choices 升格接管的块（每块至少 2 项，最多 6 块），其余块保留原文。 */
+export function stripPromotedChoices(text: string): string {
+  let stripped = 0;
+  return text.replace(choicesFence, (full, body: string) => {
+    if (stripped >= 6 || parseLines(body).length < 2) return full;
+    stripped++;
+    return '';
+  });
+}
+
 /** 仅剥离回复正文里被 parseQuestionsBlock 接管展示的第一块合法 ```questions 代码块，其余块与畸形块保留原文。 */
 export function stripValidQuestions(text: string): string {
   let stripped = false;

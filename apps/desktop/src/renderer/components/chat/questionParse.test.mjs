@@ -116,4 +116,15 @@ describe('questionParse & upgraded choices parser', () => {
     expect(stripped).not.toContain('第一组？');
     expect(stripped).toContain('第二组？');
   });
+
+  test('keeps unconsumed ```choices blocks visible when a JSON ```questions block drives the card', () => {
+    const q = JSON.stringify({ questions: [{ question: '核心问题？', options: ['A', 'B'] }] });
+    const prose = `主卡片：\n\`\`\`questions\n${q}\n\`\`\`\n附加说明：\n\`\`\`choices\n保留选项一\n保留选项二\n\`\`\``;
+    expect(parseQuestionsBlock(prose, 'mixed')?.questions[0].question).toBe('核心问题？');
+    expect(parseChoices(prose)).toEqual([]);
+    const stripped = stripChoices(prose);
+    expect(stripped).not.toContain('核心问题？');
+    expect(stripped).toContain('保留选项一');
+    expect(stripped).toContain('保留选项二');
+  });
 });

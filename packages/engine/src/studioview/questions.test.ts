@@ -7,6 +7,8 @@ import {
   listQuestionRequests,
   normalizeQuestionInput,
   normalizeQuestionResponse,
+  questionsDir,
+  submitQuestionResponse,
   waitQuestionResponse,
   writeQuestionRequest,
   writeQuestionResponse,
@@ -168,5 +170,30 @@ describe('studioview questions schema & inbox', () => {
     expect(ok.answer_map!.constructor).toBe('A');
     expect(Object.hasOwn(ok.answer_map!, '__proto__')).toBe(true);
     expect(ok.answer_map!['__proto__']).toBe('Y');
+  });
+
+  it('rolls back live claim when response commit fails so retry succeeds, and never rejects unknown settled marker as already_answered', () => {
+    const req = writeQuestionRequest(tmp, { questions: [{ question: '重试测试', options: ['A', 'B'] }] });
+    const respPath = path.join(questionsDir(tmp), `${req.id}.response.json`);
+    const settledPath = path.join(questionsDir(tmp), `${req.id}.settled.json`);
+
+    // 用同名目录阻塞 response 文件写入，模拟磁盘写入失败。
+    fs.mkdirSync(respPath);
+    expect(() => submitQuestionResponse(tmp, req.id, { status: 'answered', answer_map: { q1: 'A' } })).toThrow();
+    expect(fs.existsSync(settledPath)).toBe(false);
+
+    // 移除阻塞后列表仍未标记为已回答，且重试可正常走 live 提交，二次重复提交返回 already_answered。
+    fs.rmdirSync(respPath);
+    expect(listQuestionRequests(tmp).find((x) => x.request.id === req.id)?.answered).toBe(false);
+    expect(submitQuestionResponse(tmp, req.id, { status: 'answered', answer_map: { q1: 'A' } })).toBe('live');
+    expect(listQuestionRequests(tmp).find((x) => x.request.id === req.id)?.answered).toBe(true);
+    expect(submitQuestionResponse(tmp, req.id, { status: 'answered', answer_map: { q1: 'B' } })).toBe(
+      'already_answered',
+    );
+
+    // 归属未知的空 settled 标记不得被误判为 live / already_answered，应安全走 deferred 续接。
+    const req2 = writeQuestionRequest(tmp, { questions: [{ question: '未知标记', options: ['X', 'Y'] }] });
+    fs.writeFileSync(path.join(questionsDir(tmp), `${req2.id}.settled.json`), '');
+    expect(submitQuestionResponse(tmp, req2.id, { status: 'answered', answer_map: { q1: 'X' } })).toBe('deferred');
   });
 });

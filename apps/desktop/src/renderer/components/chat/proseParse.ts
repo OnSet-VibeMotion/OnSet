@@ -1,6 +1,5 @@
-import { parseQuestionsBlock, stripValidQuestions } from './questionParse';
+import { parseQuestionsBlock, stripPromotedChoices, stripValidQuestions } from './questionParse';
 
-const choicesBlockAll = /```choices\s*\n([\s\S]*?)```/g;
 const choicesBlockFirst = /```choices\s*\n([\s\S]*?)```/;
 
 /**
@@ -11,11 +10,13 @@ const filmStylesBlock = /```film-styles\s*\n([\s\S]*?)```/;
 
 /** 去掉回复里已被卡片/按钮接管的 choices / questions / film-styles 代码块；未接管的保留原文。 */
 export function stripChoices(text: string): string {
-  const hasMultiCard = parseQuestionsBlock(text) !== null;
   const withoutQuestions = stripValidQuestions(text);
-  const withoutChoices = hasMultiCard
-    ? withoutQuestions.replace(choicesBlockAll, '')
-    : withoutQuestions.replace(choicesBlockFirst, '');
+  let withoutChoices = withoutQuestions;
+  // 若已由 JSON ```questions 块生成卡片，独立 ```choices 块未被接管，保留原文；否则仅剥离实际被卡片/按钮消费的块。
+  if (withoutQuestions === text) {
+    if (parseQuestionsBlock(text) !== null) withoutChoices = stripPromotedChoices(withoutQuestions);
+    else if (parseChoices(text).length > 0) withoutChoices = withoutQuestions.replace(choicesBlockFirst, '');
+  }
   return withoutChoices.replace(filmStylesBlock, '').trimEnd();
 }
 

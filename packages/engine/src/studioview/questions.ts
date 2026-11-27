@@ -50,22 +50,39 @@ function readJSON<T>(file: string): T | null {
   }
 }
 
-type ClaimOutcome = 'claimed' | 'live' | 'deferred' | 'missing';
+type ClaimOutcome = 'claimed' | 'live' | 'deferred' | 'unknown' | 'missing';
+
+/** 先将完整内容写入同目录临时文件，再用不覆盖的硬链接发布到目标路径，避免空文件竞态窗口。 */
+function publishExclusive(file: string, body: string): boolean {
+  const dir = path.dirname(file);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
+  const tmp = path.join(dir, `.${path.basename(file)}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`);
+  fs.writeFileSync(tmp, body, { mode: 0o644 });
+  try {
+    fs.linkSync(tmp, file);
+    return true;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    throw err;
+  } finally {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      // 忽略临时文件清理失败。
+    }
+  }
+}
 
 function claimSettled(inbox: string, id: string, by: 'live' | 'deferred'): ClaimOutcome {
   if (!fs.existsSync(requestFile(inbox, id))) return 'missing';
   const file = settledFile(inbox, id);
-  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o755 });
-  try {
-    fs.writeFileSync(file, marshal({ by }) + '\n', { flag: 'wx', mode: 0o644 });
-    return 'claimed';
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
-    const existing = readJSON<{ by?: string }>(file);
-    if (existing?.by === 'deferred') return 'deferred';
-    if (existing?.by === 'live') return 'live';
-    return fs.existsSync(deferredFile(inbox, id)) && !fs.existsSync(responseFile(inbox, id)) ? 'deferred' : 'live';
-  }
+  if (publishExclusive(file, marshal({ by }) + '\n')) return 'claimed';
+  const existing = readJSON<{ by?: string }>(file);
+  if (existing?.by === 'deferred') return 'deferred';
+  if (existing?.by === 'live') return 'live';
+  if (fs.existsSync(deferredFile(inbox, id)) && !fs.existsSync(responseFile(inbox, id))) return 'deferred';
+  if (fs.existsSync(responseFile(inbox, id))) return 'live';
+  return 'unknown';
 }
 
 let lastStamp = 0n;
@@ -96,7 +113,18 @@ export function writeQuestionDeferred(inbox: string, id: string): boolean {
   const claim = claimSettled(inbox, id, 'deferred');
   if (claim === 'claimed' || claim === 'deferred') {
     if (!fs.existsSync(deferredFile(inbox, id))) {
-      writeAtomic(deferredFile(inbox, id), marshal({ id, deferred: true }) + '\n');
+      try {
+        writeAtomic(deferredFile(inbox, id), marshal({ id, deferred: true }) + '\n');
+      } catch (err) {
+        if (claim === 'claimed') {
+          try {
+            fs.unlinkSync(settledFile(inbox, id));
+          } catch {
+            // 忽略回滚清理失败。
+          }
+        }
+        throw err;
+      }
     }
     return true;
   }
@@ -107,19 +135,42 @@ export type SubmitQuestionOutcome = 'live' | 'deferred' | 'already_answered';
 
 /**
  * 后端按统一协调状态提交回答：
- * - live：本进程成功抢占实时通道并写入 response 文件；
- * - deferred：工具端已先抢占超时移交，调用方须走跨轮续接路径，保证移交后回答永不丢失；
- * - already_answered：已被实时回答过或请求不存在。
+ * - live：本进程成功抢占实时通道并落盘 response 文件；落盘失败会释放占用以允许原提交重试或移交；
+ * - deferred：工具端已先抢占超时移交（或归属未知且尚无已落盘答复），调用方走跨轮续接路径避免丢失回答；
+ * - already_answered：已存在落盘答复或请求不存在。
  */
 export function submitQuestionResponse(inbox: string, id: string, response: QuestionResponse): SubmitQuestionOutcome {
-  if (inbox === '') return 'already_answered';
-  const claim = claimSettled(inbox, id, 'live');
-  if (claim === 'claimed') {
-    writeAtomic(responseFile(inbox, id), marshal(response) + '\n');
-    return 'live';
+  if (inbox === '' || !fs.existsSync(requestFile(inbox, id))) return 'already_answered';
+  const target = responseFile(inbox, id);
+  const dir = path.dirname(target);
+  const tmp = path.join(dir, `.${path.basename(target)}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
+  fs.writeFileSync(tmp, marshal(response) + '\n', { mode: 0o644 });
+  try {
+    const claim = claimSettled(inbox, id, 'live');
+    if (claim === 'claimed') {
+      try {
+        fs.renameSync(tmp, target);
+        return 'live';
+      } catch (err) {
+        try {
+          fs.unlinkSync(settledFile(inbox, id));
+        } catch {
+          // 忽略回滚清理失败。
+        }
+        throw err;
+      }
+    }
+    if (claim === 'missing') return 'already_answered';
+    if (claim === 'live' && fs.existsSync(target)) return 'already_answered';
+    return 'deferred';
+  } finally {
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      // 已 rename 成功或已清理。
+    }
   }
-  if (claim === 'deferred') return 'deferred';
-  return 'already_answered';
 }
 
 /** 后端写回答复；已答过或已移交返回 false 防止重复提交。 */
@@ -144,7 +195,7 @@ export function listQuestionRequests(
     const settled = readJSON<{ by?: string }>(settledFile(inbox, request.id));
     out.push({
       request,
-      answered: fs.existsSync(responseFile(inbox, request.id)) || settled?.by === 'live',
+      answered: fs.existsSync(responseFile(inbox, request.id)),
       deferred: fs.existsSync(deferredFile(inbox, request.id)) || settled?.by === 'deferred',
     });
   }
@@ -171,11 +222,12 @@ export async function waitQuestionResponse(
     if (response && typeof response.status === 'string') return { kind: 'response', response };
     if (timeoutMs !== undefined && Date.now() - startedAt >= timeoutMs) {
       if (writeQuestionDeferred(inbox, id)) return { kind: 'deferred' };
-      // 前端已抢先占下 live 通道，短等 response 文件落盘即返回。
+      // 前端可能刚抢占 live 通道，短等 response 文件落盘；若前端写入失败释放了占用，则及时接手移交。
       const graceEnd = Date.now() + 1000;
       while (Date.now() < graceEnd) {
         const late = readJSON<QuestionResponse>(responseFile(inbox, id));
         if (late && typeof late.status === 'string') return { kind: 'response', response: late };
+        if (writeQuestionDeferred(inbox, id)) return { kind: 'deferred' };
         await new Promise((r) => setTimeout(r, 10));
       }
       return { kind: 'deferred' };
