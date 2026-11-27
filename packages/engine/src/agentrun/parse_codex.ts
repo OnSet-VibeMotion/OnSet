@@ -15,6 +15,7 @@ import {
   rawJSON,
   str,
   toolResultText,
+  unwrapOnsetToolCall,
 } from './parse_types';
 
 /** 读 codex 的 todo_list：items 为 [{text, completed}]，第一项未完成的算进行中。 */
@@ -44,12 +45,16 @@ export function parseCodex(e: Obj): Event[] {
     case 'item.updated':
       if (str(item.type) === 'todo_list') return [{ kind: KindPlan, plan: planFromCodex(item) }];
       if (str(e.type) === 'item.started' && str(item.type) === 'mcp_tool_call') {
+        const { tool, input } = unwrapOnsetToolCall(
+          `mcp__${str(item.server)}__${str(item.tool)}`,
+          item.arguments ?? {},
+        );
         return [
           {
             kind: KindToolCall,
-            tool: `mcp__${str(item.server)}__${str(item.tool)}`,
+            tool,
             call_id: str(item.id),
-            input: rawJSON(item.arguments ?? {}),
+            input: rawJSON(input),
           },
         ];
       }
@@ -69,12 +74,16 @@ export function parseCodex(e: Obj): Event[] {
         case 'mcp_tool_call': {
           const result = obj(item.result);
           const text = toolResultText(result.content) || str(obj(item.error).message);
+          const { tool, input } = unwrapOnsetToolCall(
+            `mcp__${str(item.server)}__${str(item.tool)}`,
+            item.arguments ?? {},
+          );
           return [
             {
               kind: KindToolResult,
-              tool: `mcp__${str(item.server)}__${str(item.tool)}`,
+              tool,
               call_id: str(item.id),
-              input: rawJSON(item.arguments ?? {}),
+              input: rawJSON(input),
               text: clip(text),
               is_error:
                 str(item.status) === 'failed' ||

@@ -3,13 +3,13 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { findOp, normalizeParams, TextSink } from './ops/op';
 import { tempDir } from './testutil';
-import { describeTools } from './toolsmcp';
+import { describeToolCatalog, describeTools } from './toolsmcp';
 
 const CollectOps = ['asset_gather', 'asset_collect', 'asset_fetch', 'asset_page'] as const;
 
 describe('collect_cmd operations and MCP exposure', () => {
   it('exposes asset_* tools only to orchestrator and never to renderer', () => {
-    const orchestratorNames = describeTools('orchestrator').map((t) => t.name);
+    const orchestratorNames = describeToolCatalog('orchestrator').all.map((t) => t.name);
     const rendererNames = describeTools('renderer').map((t) => t.name);
     for (const name of CollectOps) {
       expect(orchestratorNames, `编排端应暴露 ${name}`).toContain(name);

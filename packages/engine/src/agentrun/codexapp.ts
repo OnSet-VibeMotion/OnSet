@@ -7,11 +7,33 @@
  * （TTS 要连外网，理由同 exec 路径）。来问的命令先过白名单，白名单里的直接放行，其余交给用户。
  * 字段名按 codex-cli 0.163 的 app-server generate-json-schema 写。
  */
-import { BasisTotalInput, CodexFastTier, effectiveOptions, LongToolWaitSeconds, longWaitServer, newUsage, windowsOrchestratorEffort, type Usage } from '../tools';
-import { runInteractive, unwrapShell, type DriveContext, type PermissionAnswer } from './interactive';
-import { KindError, KindPlan, KindSession, KindText, KindThinking, KindToolCall, KindToolResult, clip, compactionEvent, type Event, type PlanItem } from './parse';
-import type { Outcome, Spec } from './run';
+import {
+  BasisTotalInput,
+  CodexFastTier,
+  effectiveOptions,
+  LongToolWaitSeconds,
+  longWaitServer,
+  newUsage,
+  type Usage,
+  windowsOrchestratorEffort,
+} from '../tools';
 import { ActiveTasks } from './activetasks';
+import { type DriveContext, type PermissionAnswer, runInteractive, unwrapShell } from './interactive';
+import {
+  clip,
+  compactionEvent,
+  type Event,
+  KindError,
+  KindPlan,
+  KindSession,
+  KindText,
+  KindThinking,
+  KindToolCall,
+  KindToolResult,
+  type PlanItem,
+  unwrapOnsetToolCall,
+} from './parse';
+import type { Outcome, Spec } from './run';
 
 type Obj = Record<string, unknown>;
 const obj = (v: unknown): Obj => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Obj) : {});
@@ -35,7 +57,8 @@ function subtract(total: unknown, base: Obj | null): Obj {
   const t = obj(total);
   if (!base) return t;
   const out: Obj = {};
-  for (const key of ['inputTokens', 'cachedInputTokens', 'outputTokens', 'reasoningOutputTokens', 'totalTokens']) out[key] = num(t[key]) - num(base[key]);
+  for (const key of ['inputTokens', 'cachedInputTokens', 'outputTokens', 'reasoningOutputTokens', 'totalTokens'])
+    out[key] = num(t[key]) - num(base[key]);
   return out;
 }
 
@@ -55,22 +78,47 @@ export function codexItemEvents(phase: 'started' | 'completed', item: Obj): Even
       return phase === 'completed' && str(item.text) !== '' ? [{ kind: KindText, text: str(item.text) }] : [];
     case 'reasoning': {
       if (phase !== 'completed') return [];
-      const parts = [...(Array.isArray(item.summary) ? item.summary : []), ...(Array.isArray(item.content) ? item.content : [])].map((x) => (typeof x === 'string' ? x : str(obj(x).text)));
+      const parts = [
+        ...(Array.isArray(item.summary) ? item.summary : []),
+        ...(Array.isArray(item.content) ? item.content : []),
+      ].map((x) => (typeof x === 'string' ? x : str(obj(x).text)));
       const text = parts.filter((x) => x !== '').join('\n');
       return text !== '' ? [{ kind: KindThinking, text }] : [];
     }
     case 'commandExecution':
-      if (phase === 'started') return [{ kind: KindToolCall, tool: 'shell', call_id: id, input: { command: unwrapShell(str(item.command)) } }];
-      return [{ kind: KindToolResult, tool: 'shell', call_id: id, text: clip(str(item.aggregatedOutput)), is_error: num(item.exitCode) !== 0 || str(item.status) === 'failed' || undefined }];
+      if (phase === 'started')
+        return [{ kind: KindToolCall, tool: 'shell', call_id: id, input: { command: unwrapShell(str(item.command)) } }];
+      return [
+        {
+          kind: KindToolResult,
+          tool: 'shell',
+          call_id: id,
+          text: clip(str(item.aggregatedOutput)),
+          is_error: num(item.exitCode) !== 0 || str(item.status) === 'failed' || undefined,
+        },
+      ];
     case 'fileChange':
     case 'collabAgentToolCall':
     case 'mcpToolCall':
     case 'webSearch': {
-      let tool = ({ fileChange: 'file_change', mcpToolCall: 'mcp_tool_call', webSearch: 'web_search', collabAgentToolCall: str(item.tool) } as Record<string, string>)[str(item.type)];
-      // MCP 调用按 claude 的写法记成 mcp__<服务>__<工具>：界面与测试要认出调用的是哪个工具。
-      if (str(item.type) === 'mcpToolCall' && str(item.server) !== '' && str(item.tool) !== '') tool = `mcp__${str(item.server)}__${str(item.tool)}`;
-      if (phase === 'started') return [{ kind: KindToolCall, tool, call_id: id, input: item }];
-      return [{ kind: KindToolResult, tool, call_id: id, input: item, is_error: str(item.status) === 'failed' || undefined }];
+      let tool = (
+        {
+          fileChange: 'file_change',
+          mcpToolCall: 'mcp_tool_call',
+          webSearch: 'web_search',
+          collabAgentToolCall: str(item.tool),
+        } as Record<string, string>
+      )[str(item.type)];
+      let input: unknown = item;
+      // MCP 调用按 claude 的写法记成 mcp__<服务>__<工具>：界面与测试要认出调用的是哪个工具，并解包 tool_call / onset_call。
+      if (str(item.type) === 'mcpToolCall' && str(item.server) !== '' && str(item.tool) !== '') {
+        const full = `mcp__${str(item.server)}__${str(item.tool)}`;
+        const unwrapped = unwrapOnsetToolCall(full, item.arguments ?? {});
+        tool = unwrapped.tool;
+        if (unwrapped.tool !== full) input = unwrapped.input;
+      }
+      if (phase === 'started') return [{ kind: KindToolCall, tool, call_id: id, input }];
+      return [{ kind: KindToolResult, tool, call_id: id, input, is_error: str(item.status) === 'failed' || undefined }];
     }
   }
   return [];
@@ -85,7 +133,8 @@ export class CodexTasks {
     if (item.type === 'subAgentActivity') {
       const id = str(item.agentThreadId);
       if (!id) return null;
-      if (item.kind === 'started') this.tasks.start(id, str(item.agentPath).split('/').filter(Boolean).at(-1) || '子任务');
+      if (item.kind === 'started')
+        this.tasks.start(id, str(item.agentPath).split('/').filter(Boolean).at(-1) || '子任务');
       else if (item.kind === 'completed' || item.kind === 'interrupted') this.tasks.finish(id);
       else return null;
       return this.tasks.event();
@@ -94,9 +143,12 @@ export class CodexTasks {
     const tool = str(item.tool);
     const call = str(item.id);
     const pending = call ? 'spawn:' + call : '';
-    const receivers = Array.isArray(item.receiverThreadIds) ? item.receiverThreadIds.filter((id): id is string => typeof id === 'string' && id !== '') : [];
+    const receivers = Array.isArray(item.receiverThreadIds)
+      ? item.receiverThreadIds.filter((id): id is string => typeof id === 'string' && id !== '')
+      : [];
     const states = obj(item.agentsStates);
-    if (phase === 'started' && tool === 'spawnAgent' && receivers.length === 0) this.tasks.start(pending, str(item.prompt) || '正在启动子任务');
+    if (phase === 'started' && tool === 'spawnAgent' && receivers.length === 0)
+      this.tasks.start(pending, str(item.prompt) || '正在启动子任务');
     if (phase === 'completed' || receivers.length > 0) this.tasks.finish(pending);
     for (const id of new Set([...receivers, ...Object.keys(states)])) {
       const status = str(obj(states[id]).status);
@@ -124,7 +176,10 @@ export class CodexTasks {
       else if (['idle', 'notLoaded', 'systemError'].includes(status)) this.tasks.finish(id);
     } else if (method === 'item/started') {
       const item = obj(p.item);
-      this.tasks.progress(id, str(item.command) || str(item.tool) || (item.type === 'reasoning' ? '正在思考' : '正在处理子任务'));
+      this.tasks.progress(
+        id,
+        str(item.command) || str(item.tool) || (item.type === 'reasoning' ? '正在思考' : '正在处理子任务'),
+      );
     } else return null;
     return this.tasks.event();
   }
@@ -136,7 +191,13 @@ export function codexDecision(answer: PermissionAnswer): string {
 }
 
 /** codex 一轮（argv 与环境由 tools.codexAppInvocation 给出）。 */
-export function runCodexApp(spec: Spec, emit: (event: Event) => void, signal: AbortSignal | undefined, argv: string[], env: Record<string, string> | undefined): Promise<Outcome> {
+export function runCodexApp(
+  spec: Spec,
+  emit: (event: Event) => void,
+  signal: AbortSignal | undefined,
+  argv: string[],
+  env: Record<string, string> | undefined,
+): Promise<Outcome> {
   return runInteractive(spec, emit, signal, argv, env, (ctx) => driveCodex(ctx));
 }
 
@@ -168,7 +229,9 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
       }
       case 'turn/plan/updated': {
         const steps = Array.isArray(p.plan) ? p.plan.map(obj) : [];
-        const plan: PlanItem[] = steps.map((s) => ({ text: str(s.step), status: planStatus(str(s.status)) })).filter((s) => s.text !== '');
+        const plan: PlanItem[] = steps
+          .map((s) => ({ text: str(s.step), status: planStatus(str(s.status)) }))
+          .filter((s) => s.text !== '');
         if (plan.length > 0) ctx.emit({ kind: KindPlan, plan });
         return;
       }
@@ -196,7 +259,10 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
   });
   peer.onRequest('item/commandExecution/requestApproval', async (params) => {
     const p = obj(params);
-    const answer = await ctx.decide('Bash', { command: unwrapShell(str(p.command)), description: str(p.reason) || undefined });
+    const answer = await ctx.decide('Bash', {
+      command: unwrapShell(str(p.command)),
+      description: str(p.reason) || undefined,
+    });
     return { decision: codexDecision(answer) };
   });
   // MCP 工具调用的审批：codex 在 untrusted 策略下给每次 MCP 调用发一个 elicitation（2026-11，0.163 实测）。
@@ -206,11 +272,17 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
     const server = str(p.serverName);
     if (spec.toolsServer && server === spec.toolsServer.name) return { action: 'accept', content: {} };
     const answer = await ctx.decide('mcp__' + server, { message: str(p.message) });
-    return { action: answer.decision === 'allow' || answer.decision === 'always' ? 'accept' : 'decline', content: answer.decision === 'allow' || answer.decision === 'always' ? {} : null };
+    return {
+      action: answer.decision === 'allow' || answer.decision === 'always' ? 'accept' : 'decline',
+      content: answer.decision === 'allow' || answer.decision === 'always' ? {} : null,
+    };
   });
   peer.onRequest('item/fileChange/requestApproval', async (params) => {
     const p = obj(params);
-    const answer = await ctx.decide('Edit', { path: str(p.grantRoot) || undefined, reason: str(p.reason) || '修改工作区之外的文件' });
+    const answer = await ctx.decide('Edit', {
+      path: str(p.grantRoot) || undefined,
+      reason: str(p.reason) || '修改工作区之外的文件',
+    });
     return { decision: codexDecision(answer) };
   });
   const race = <T>(p: Promise<T>) => Promise.race([p, ctx.exited]);
@@ -234,12 +306,22 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
       ...(writable.length > 0 ? { 'sandbox_workspace_write.writable_roots': writable } : {}),
       // onset 的工具服务：编排工具只经它调用 onset（codex 的 config 键用点号路径，值按 TOML 的结构给）。
       ...(server
-        ? { [`mcp_servers.${server.name}`]: { command: server.command, args: server.args, env: server.env ?? {}, tool_timeout_sec: LongToolWaitSeconds + 120 } }
+        ? {
+            [`mcp_servers.${server.name}`]: {
+              command: server.command,
+              args: server.args,
+              env: server.env ?? {},
+              tool_timeout_sec: LongToolWaitSeconds + 120,
+            },
+          }
         : {}),
     },
   };
   let opened: Obj;
-  if (spec.resume && spec.sessionID) opened = obj(await race(peer.request('thread/resume', { threadId: spec.sessionID, excludeTurns: true, ...settings })));
+  if (spec.resume && spec.sessionID)
+    opened = obj(
+      await race(peer.request('thread/resume', { threadId: spec.sessionID, excludeTurns: true, ...settings })),
+    );
   else opened = obj(await race(peer.request('thread/start', settings)));
   threadID = str(obj(opened.thread).id) || spec.sessionID || '';
   if (threadID === '') throw new Error('thread/start 没有返回会话 id');
@@ -248,7 +330,15 @@ async function driveCodex(ctx: DriveContext): Promise<void> {
 
   // 推理强度只有 turn/start 认；用户选的优先于 Windows 上的缺省。
   const effort = options.effort || windowsOrchestratorEffort(spec.env ?? {});
-  const started = obj(await race(peer.request('turn/start', { threadId: threadID, input: [{ type: 'text', text: spec.prompt }], ...(effort ? { effort } : {}) })));
+  const started = obj(
+    await race(
+      peer.request('turn/start', {
+        threadId: threadID,
+        input: [{ type: 'text', text: spec.prompt }],
+        ...(effort ? { effort } : {}),
+      }),
+    ),
+  );
   turnID = str(obj(started.turn).id);
   const already = early.find((t) => str(t.id) === turnID);
   if (already) finished(already);

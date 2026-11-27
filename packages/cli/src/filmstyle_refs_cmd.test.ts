@@ -8,7 +8,7 @@ import { Command, ref } from './cobra';
 import { opCommand } from './ops/cli';
 import { allOps } from './ops/op';
 import { Buffer, tempDir } from './testutil';
-import { describeTools } from './toolsmcp';
+import { describeToolCatalog } from './toolsmcp';
 
 async function runFilmStyle(root: string, ...args: string[]): Promise<{ out: string; err: Error | null }> {
   const out = new Buffer();
@@ -28,7 +28,7 @@ async function runFilmStyle(root: string, ...args: string[]): Promise<{ out: str
 
 describe('mg-styles & film_style_refs CLI/MCP', () => {
   it('exposes film_style_refs as an instant orchestrator MCP tool', () => {
-    const tool = describeTools('orchestrator').find((t) => t.name === 'film_style_refs');
+    const tool = describeToolCatalog('orchestrator').all.find((t) => t.name === 'film_style_refs');
     expect(tool).toBeDefined();
     expect(tool!.inputSchema.properties).not.toHaveProperty('wait_seconds');
   });

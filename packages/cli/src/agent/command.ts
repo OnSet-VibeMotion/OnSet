@@ -2,9 +2,9 @@
  * onset studio agent：制作人（ORCHESTRATOR=director）。客户端与 onset run 按 tools.orchestratorInvocation 启动它，
  * 请求经 stdin 一行 JSON（director.Request），输出 claude 系的 stream-json，由 agentrun 解析。
  *
- * onset 的制作工具不经 MCP，直接在这个进程里做成 agent 的工具：工具列表与参数校验与工具服务（toolsmcp）
- * 是同一份（describeTools、prepareCall），每次调用照样起一个执行进程（Jobs），只是不用 wait_seconds /
- * job_wait——那是给 codex 的 60 秒 MCP 超时准备的，这里直接等到跑完，取消时整组结束。
+ * onset 的制作工具不经 MCP，直接在这个进程里做成 agent 的工具：工具目录与参数校验与工具服务（toolsmcp）
+ * 是同一份（describeToolCatalog、prepareCall、searchTools），编排档位默认静态紧凑模式（核心直出 + tool_search + tool_call），
+ * 每次调用照样起一个执行进程（Jobs），只是不用 wait_seconds / job_wait——直接等到跑完，取消时整组结束。
  *
  * pi 在单独的 onset-agent.cjs 里（见 pi.ts 的说明），只有这个命令加载它。
  */
@@ -14,7 +14,24 @@ import * as studioview from '@onset/engine/studioview';
 import { currentEnvironment } from '../cli';
 import { Command } from '../cobra';
 import type { ParamValues } from '../ops/op';
-import { callTarget, describeTools, Jobs, prepareCall, type Spawner, spawnOp, spawnOpWithService } from '../toolsmcp';
+import {
+  callTarget,
+  type DescribeToolsOptions,
+  DirectOnlyTools,
+  describeToolCatalog,
+  Jobs,
+  LegacyOnsetCallName,
+  LegacyToolHelpName,
+  parseRoutedArguments,
+  prepareCall,
+  type Spawner,
+  searchTools,
+  spawnOp,
+  spawnOpWithService,
+  ToolCallName,
+  type ToolDef,
+  ToolSearchName,
+} from '../toolsmcp';
 import { askTool } from './ask';
 import { newGate } from './gate';
 import { todoTool } from './todo';
@@ -33,21 +50,50 @@ export async function loadAgentModule(): Promise<AgentModule> {
   return (await import('./pi')) as AgentModule;
 }
 
+async function runOpDef(
+  jobs: Jobs,
+  targetDef: ToolDef,
+  opInput: ParamValues,
+  signal: AbortSignal | undefined,
+): Promise<{ text: string; isError: boolean; imagePath?: string }> {
+  let params: ParamValues;
+  try {
+    params = prepareCall(targetDef, opInput);
+  } catch (err) {
+    return { text: (err as Error).message, isError: true };
+  }
+  const target = callTarget(targetDef, params);
+  const job = jobs.start(target.name, target.params);
+  const reply = await jobs.wait(job, undefined, signal);
+  if (signal?.aborted) jobs.cancel(job.id);
+  const sheet = (reply.data as { sheet?: unknown } | undefined)?.sheet;
+  return {
+    text: reply.text,
+    isError: reply.isError,
+    ...(targetDef.name === 'scene_preview_check' && !reply.isError && typeof sheet === 'string'
+      ? { imagePath: sheet }
+      : {}),
+  };
+}
+
 /**
- * 把编排档位的操作做成 agent 的工具；job_wait、job_cancel 不要（这里直接等到跑完）。
- * 除了只读的 tool_help，都顺序执行：模型一次发出 scene_cues 与 scene_run 时，后者要等前者写完 scene.json。
+ * 把编排/渲染档位的操作做成 agent 的工具；job_wait、job_cancel 不要（这里直接等到跑完）。
+ * 编排档位共享 describeToolCatalog()：默认静态紧凑模式（核心直出 + tool_search + tool_call）。
+ * tool_search / tool_help 为只读并发（sequential: false），tool_call 与业务操作均顺序执行（sequential: true）。
  */
 export function onsetTools(
   spawner: Spawner = spawnOp,
   root = '',
   profile: 'orchestrator' | 'renderer' = 'orchestrator',
   archiveDir: string | (() => string) = toolOutputArchiveDir,
+  options: DescribeToolsOptions = {},
 ): { tools: AgentTool[]; jobs: Jobs } {
   const jobs = new Jobs(spawner, archiveDir);
-  const defs = describeTools(profile, root).filter(
+  const catalog = describeToolCatalog(profile, root, options);
+  const defs = catalog.exposed.filter(
     (t) => t.name !== 'job_wait' && t.name !== 'job_cancel' && t.name !== studioview.StudioAskToolName,
   );
-  const byName = new Map(defs.map((t) => [t.name, t]));
+  const allByName = new Map(catalog.all.map((t) => [t.name, t]));
   const tools: AgentTool[] = defs.map((def) => {
     const schema = JSON.parse(JSON.stringify(def.inputSchema)) as { properties?: Record<string, unknown> };
     if (schema.properties) delete schema.properties.wait_seconds;
@@ -56,35 +102,28 @@ export function onsetTools(
       label: def.name,
       description: def.description,
       parameters: schema as Record<string, unknown>,
-      sequential: def.name !== 'tool_help',
+      sequential: def.name !== ToolSearchName && def.name !== LegacyToolHelpName,
       async execute(input, signal) {
-        if (def.name === 'tool_help') {
-          const asked = String(input.tool ?? '');
-          if (asked === studioview.StudioAskToolName && profile === 'orchestrator') {
-            return { text: studioview.studioAskHelp, isError: false };
+        if (def.name === ToolSearchName || def.name === LegacyToolHelpName) {
+          return searchTools(catalog, input as ParamValues, { legacyHelp: def.name === LegacyToolHelpName });
+        }
+        if (def.name === ToolCallName || def.name === LegacyOnsetCallName) {
+          const opName = String(input.tool ?? '').trim();
+          if (opName === '') return { text: `${def.name} 缺少参数 tool`, isError: true };
+          if (DirectOnlyTools.has(opName)) {
+            return { text: `请直接调用 ${opName}，不要经 ${def.name} 转发`, isError: true };
           }
-          const target = byName.get(asked);
-          if (!target) return { text: `没有这个工具：${asked}`, isError: true };
-          return { text: target.help || target.description, isError: false };
+          let opInput: ParamValues;
+          try {
+            opInput = parseRoutedArguments(input.arguments, def.name);
+          } catch (err) {
+            return { text: (err as Error).message, isError: true };
+          }
+          const targetDef = allByName.get(opName);
+          if (!targetDef?.op) return { text: `没有这个工具：${opName}`, isError: true };
+          return runOpDef(jobs, targetDef, opInput, signal);
         }
-        let params: ParamValues;
-        try {
-          params = prepareCall(def, input as ParamValues);
-        } catch (err) {
-          return { text: (err as Error).message, isError: true };
-        }
-        const target = callTarget(def, params);
-        const job = jobs.start(target.name, target.params);
-        const reply = await jobs.wait(job, undefined, signal);
-        if (signal?.aborted) jobs.cancel(job.id);
-        const sheet = (reply.data as { sheet?: unknown } | undefined)?.sheet;
-        return {
-          text: reply.text,
-          isError: reply.isError,
-          ...(def.name === 'scene_preview_check' && !reply.isError && typeof sheet === 'string'
-            ? { imagePath: sheet }
-            : {}),
-        };
+        return runOpDef(jobs, def, input as ParamValues, signal);
       },
     };
   });

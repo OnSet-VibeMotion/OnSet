@@ -28,7 +28,7 @@ import {
   SettingsManager,
 } from '@earendil-works/pi-coding-agent';
 import * as director from '@onset/engine/director';
-import { completeToolArguments } from './arguments';
+import { completeToolArguments, normalizeLegacyToolCalls } from './arguments';
 import { modelRuntime, projectSessionDir, ServiceProvider, serviceModel, sessionManager, toPiTool } from './pi_runtime';
 import { PreviewHistory } from './preview-history';
 import { rendererFileTools, rendererFileWorkflow } from './renderer-files';
@@ -49,7 +49,7 @@ const GateExtension = 'onset-gate';
  * 每一轮都要发、按 token 计费，所以一条一句话。成熟的编码 CLI 自带的习惯（先读后改、失败先看报错）pi 没有，要写明。
  */
 const preamble = `你在一个视频项目的目录里工作，帮用户把文章做成动态视频。
-- 项目里的每一步制作都有对应的工具（scene_run、align_build……）。参数不确定时先 tool_help({"tool": "<工具名>"}) 查，不要猜。onset 不在终端里，不要在 bash 里找它或运行它。
+- 项目里的每一步制作都有对应的工具（scene_run、align_build……）。查参数或搜扩展工具先用 tool_search({"query": "<工具名或关键词>"})，未直接暴露的扩展与第三方站工具经 tool_call({"tool": "<工具名>", "arguments": {...}}) 调用，不要猜。onset 不在终端里，不要在 bash 里找它或运行它。
 - 这里的制作工具会一直等到做完才返回，渲染、拼接可能要几十分钟：直接等结果，不要中途重复发起；没有任务号，也没有 job_wait。
 - 文件只在项目目录里读写，.env 里是凭据，不要读。改文件前先读它；大文件按段读，不要一次读全。
 - 列目录、读写文件和查找内容优先用 ls、read、write、edit、grep、find；读取 JSON 字段可用 jq，不为这些简单操作另写 Python 或 Node 脚本。制作步骤优先用现有制作工具，只有项目特有且工具无法完成的数据处理才写脚本。
@@ -100,6 +100,7 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
   const realSessionID = sessions.getSessionId();
   o.onSessionID?.(realSessionID);
   const archiveDir = toolOutputArchiveDir(realSessionID);
+  const registeredToolNames = new Set(o.tools.map((t) => t.name));
   const gate: ExtensionFactory = (pi: ExtensionAPI) => {
     pi.on('session_before_compact', async () => {
       sentPreviews.clear();
@@ -132,8 +133,9 @@ export const runAgent: AgentModule['runAgent'] = async (o: RunOptions) => {
         return message === event.message ? undefined : { message };
       }
       if (event.message.role !== 'assistant') return;
-      const message = completeToolArguments(event.message);
-      return message ? { message } : undefined;
+      const completed = completeToolArguments(event.message);
+      const next = normalizeLegacyToolCalls(completed ?? event.message, registeredToolNames) ?? completed;
+      return next ? { message: next } : undefined;
     });
     // Old sessions keep their original records. Limit their errors & oversized bash outputs on the way back to the model.
     pi.on('context', async ({ messages }) => {

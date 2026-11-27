@@ -80,7 +80,10 @@ const onsetVerbs: Record<string, string> = {
   scene_preview_check: '检查画面并生成联系表',
   scene_cues: '计算镜头时长',
   scene_prepare: '准备镜头目录',
+  scene_seams: '检查镜头接缝',
   scene_usage: '查看渲染用量',
+  tool_search: '检索工具',
+  tool_call: '调用扩展工具',
   onset_call: '调用扩展工具',
   job_wait: '等任务跑完',
   job_cancel: '取消任务',
@@ -94,15 +97,43 @@ const onsetVerbs: Record<string, string> = {
   audio_patch_voice: '替换局部配音',
   phrase_frames: '生成短语验收证据',
   flow_guide: '查看制作阶段说明',
+  inputs_manifest: '核对输入清单',
   align_text: '整理朗读文本',
   audio_check: '校验字幕时间轴',
   validate_reads: '检查阅读时长',
   validate_video: '校验成片',
+  validate_publish: '校验发布配置',
+  validate_beat: '校验卡点规格',
+  validate_song: '校验歌曲规格',
+  beat_import: '导入卡点音乐',
+  beat_analyze: '分析音乐节拍',
+  beat_regrid: '调整节拍网格',
+  beat_confirm: '确认节拍网格',
   beat_cues: '计算镜头时长',
+  beat_click: '生成节拍试听',
+  song_configure: '配置歌曲参数',
+  song_generate: '生成歌曲',
+  song_import: '导入歌曲',
+  song_select: '选定歌曲候选',
+  song_prepare: '整理唱词时间轴',
+  song_cues: '计算歌曲镜头',
+  song_mux: '合成歌曲成片',
+  song_handoff: '生成网页制歌交接',
+  song_receive: '接收网页歌曲',
+  film_style_list: '查看整片风格',
   film_style_use: '换整片风格',
   voice_synthesize: '合成配音',
   voice_list: '查看音色',
   voice_save: '存音色',
+  sfx_search: '检索音效',
+  sfx_download: '下载音效',
+  brand_kit_list: '查看品牌包',
+  brand_kit_get: '读取品牌包',
+  brand_kit_extract: '提取品牌包',
+  brand_kit_apply: '应用品牌包',
+  project_export_jianying: '导出剪映草稿',
+  media_frame_qc: '自动帧检视频',
+  media_generate: '生成多模态素材',
   studio_show: '打开页面',
   studio_step: '标出步骤',
   studio_confirm: '记录关卡确认',
@@ -133,7 +164,18 @@ function onsetTool(name: string, record: Record<string, unknown>): { verb: strin
   }
   if (name === 'job_wait' || name === 'job_cancel')
     return { verb: onsetVerbs[name], target: text('job'), command: false };
+  if (name === 'tool_search') {
+    const target = text('query') || text('category') || text('tool');
+    return { verb: onsetVerbs[name], target, command: false };
+  }
   const target =
-    text('scene') || text('scene_id') || text('tool') || text('page') || text('key') || text('name') || args;
+    text('scene') ||
+    text('scene_id') ||
+    text('tool') ||
+    text('page') ||
+    text('key') ||
+    text('name') ||
+    text('query') ||
+    args;
   return { verb: onsetVerbs[name] ?? pluginVerbs.get(name) ?? name.replace(/_/g, ' '), target, command: false };
 }

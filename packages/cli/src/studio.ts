@@ -201,11 +201,12 @@ function newToolsMCPCommand(): Command {
   const profile = ref('orchestrator');
   const workdir = ref('');
   const compact = ref(false);
+  const full = ref(false);
   const cmd = new Command({
     use: 'tools-mcp',
     hidden: true,
     short: '客户端内部用：onset 的工具服务（MCP，stdio）',
-    long: `把 onset 的每条命令做成一个 MCP 工具，给客户端里的编排工具（--profile orchestrator，全部工具）与
+    long: `把 onset 的每条命令做成一个 MCP 工具，给客户端里的编排工具（--profile orchestrator，默认静态紧凑模式）与
 镜头渲染器（--profile renderer，只有 hyperframes）用。每次调用起一个 onset 子进程执行，最多等 wait_seconds，
 没跑完返回任务号，用 job_wait 接着等。stdin / stdout 是 MCP 的 JSON-RPC，每行一条。`,
     example: `  # 客户端写进编排工具 MCP 配置里的就是这一条，由编排工具启动：
@@ -218,15 +219,17 @@ function newToolsMCPCommand(): Command {
       const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
       // 取消时（SIGTERM）不再等下一行：关掉输入，服务循环结束、停掉全部任务后退出。
       c.context().addEventListener('abort', () => rl.close(), { once: true });
+      const useCompact = full.value ? false : compact.value ? true : compactModeEnabled();
       await serveToolsMCP(rl, (line) => process.stdout.write(line), profile.value as Profile, undefined, c.context(), {
-        compact: compact.value || compactModeEnabled(),
+        compact: useCompact,
       });
     },
   });
   cmd
     .flags()
-    .stringVar(profile, 'profile', 'orchestrator', '工具档位：orchestrator（全部）或 renderer（只有 hyperframes）');
+    .stringVar(profile, 'profile', 'orchestrator', '工具档位：orchestrator（编排）或 renderer（只有 hyperframes）');
   cmd.flags().stringVar(workdir, 'workdir', '', '工具在哪个目录里执行（编排工具是项目根，渲染器是镜头目录）');
-  cmd.flags().boolVar(compact, 'compact', false, '紧凑模式：编排档位直出核心主链路，其余扩展工具经 onset_call 路由');
+  cmd.flags().boolVar(compact, 'compact', false, '显式启用紧凑模式（编排档位默认开启）');
+  cmd.flags().boolVar(full, 'full', false, '应急退回全量模式：编排档位展开全部工具完整 schema');
   return cmd;
 }

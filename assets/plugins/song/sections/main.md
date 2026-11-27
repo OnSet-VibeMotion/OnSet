@@ -2,7 +2,7 @@
 
 ## 制作工具
 
-- 制作命令都是 onset 工具服务（MCP）里的工具：下文写成 `工具名({参数})` 的就是一次工具调用，位置参数放进 `args`，其余参数按名字填；参数怎么填、会产出什么用 `tool_help({"tool": "<工具名>"})` 查。渲染、拼接这类长任务会先返回任务号，用 `job_wait` 等到完成，不要重复发起。说明、报错或工具输出里写成 `onset <命令> <子命令>` 的，指的就是同名工具（空格与连字符换成下划线，例如 `onset scene run-all` 就是 `scene_run_all`）。`onset` 不在终端里，不要在 Bash 里找它或运行它。
+- 制作命令都是 onset 工具服务（MCP）里的工具：下文写成 `工具名({参数})` 的就是一次工具调用，位置参数放进 `args`，其余参数按名字填；查参数或搜扩展工具用 `tool_search({"query": "<工具名或关键词>"})`，未直接出现在顶层列表中的扩展与第三方站工具经 `tool_call({"tool": "<工具名>", "arguments": {...}})` 调用。渲染、拼接这类长任务会先返回任务号，用 `job_wait` 等到完成，不要重复发起。说明、报错或工具输出里写成 `onset <命令> <子命令>` 的，指的就是同名工具（空格与连字符换成下划线，例如 `onset scene run-all` 就是 `scene_run_all`）。`onset` 不在终端里，不要在 Bash 里找它或运行它。
 
 本项目以 song.yaml 启用歌曲讲解。先读 frame.md、templates/project-rules.md
 和 .agents/skills/song-explainer/SKILL.md，沿用项目画幅、风格、MG 制作与逐帧

@@ -172,3 +172,25 @@ export function planFromTodos(input: unknown): PlanItem[] {
   }
   return plan;
 }
+
+const RoutedOnsetToolPattern = /^(?:mcp__onset__|mcp_onset_|onset[._])?(?:tool_call|onset_call)$/;
+
+/**
+ * 把经 tool_call / onset_call 路由调用的 onset 扩展工具拆回真实操作名 mcp__onset__<op> 与参数对象，
+ * 保证全 9 家编排后端与内置制作人在客户端时间线、状态栏、中文动词与进度归类上 100% 透明一致。
+ */
+export function unwrapOnsetToolCall(name: string, input: unknown): { tool: string; input: unknown } {
+  if (!RoutedOnsetToolPattern.test(name)) return { tool: name, input };
+  const o = obj(input);
+  const toolName = str(o.tool).trim();
+  if (toolName === '') return { tool: name, input };
+  let args: unknown = o.arguments ?? {};
+  if (typeof args === 'string') {
+    try {
+      args = JSON.parse(args);
+    } catch {
+      // 非法 JSON 保留原值供界面显示。
+    }
+  }
+  return { tool: `mcp__onset__${toolName}`, input: args };
+}

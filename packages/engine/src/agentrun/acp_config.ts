@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { atomicWrite } from '../fsutil';
 import { marshalIndent } from '../gojson';
-import { effectiveOptions, type McpServer, ToolsCompactEnv, ToolsMaxWaitEnv, ToolsServerName } from '../tools';
+import { effectiveOptions, type McpServer, ToolsMaxWaitEnv, ToolsServerName } from '../tools';
 import { type Obj, obj, str } from './acp_protocol';
 import type { Spec } from './run';
 
@@ -180,14 +180,13 @@ export async function ensureModel(
 /**
  * ACP 的 mcpServers：stdio 服务的 env 是 {name, value} 列表。
  * agy 默认 MCP 超时 180 秒，给 onset 设 150 秒上限减少短轮询；
- * 同时 agy acp 存在约 32 KB eager 工具声明上限且不提供 call_mcp_tool 回退，给 onset 开启紧凑模式防止核心主链路工具被静默丢弃。
+ * 编排档位已全局默认开启静态紧凑模式（核心精简直出 + tool_search + tool_call），所有后端均稳守 agy ~32 KB 声明预算。
  */
 export function acpMcpServers(server: McpServer | undefined, tool = ''): Array<Record<string, unknown>> {
   if (!server) return [];
   const env = { ...(server.env ?? {}) };
   if (tool === 'agy' && server.name === ToolsServerName) {
     if (!env[ToolsMaxWaitEnv]) env[ToolsMaxWaitEnv] = '150';
-    if (!env[ToolsCompactEnv]) env[ToolsCompactEnv] = '1';
   }
   return [
     {

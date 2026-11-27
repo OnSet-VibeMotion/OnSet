@@ -12,13 +12,15 @@ import {
   type ParamSpec,
   type ParamValues,
 } from './ops/op';
-import { compactToolDef, onsetCallToolDef } from './toolsmcp_compact';
+import { compactToolDef, toolCallToolDef, toolSearchToolDef } from './toolsmcp_compact';
 import { defaultWaitSeconds } from './toolsmcp_jobs';
 import {
   allowedForProjectFlow,
   CompactCoreOps,
+  compactModeEnabled,
   HyperFramesSubcommands,
   instantOps,
+  LegacyToolHelpName,
   normalizeHyperFramesParams,
   orchestratorHyperFramesSubcommands,
   type Profile,
@@ -38,22 +40,22 @@ export interface JSONSchema {
   additionalProperties?: boolean;
 }
 
-/** 一个工具：来自一条操作，或是服务自己的 job_wait / job_cancel / tool_help。 */
+/** 一个工具：来自一条操作，或是服务自己的 job_wait / job_cancel / tool_search / tool_call / tool_help。 */
 export interface ToolDef {
   /** 生成工具时的角色，用于执行时再次校验，不能只依赖 schema 限制。 */
   profile?: Profile;
   name: string;
   description: string;
   inputSchema: JSONSchema;
-  /** 对应的操作；任务工具为空。 */
+  /** 对应的操作；任务与元工具为空。 */
   op?: Op;
-  /** tool_help 返回的完整说明。 */
+  /** tool_search / tool_help 返回的完整说明。 */
   help: string;
   /** 第三方站的操作：执行时落到 station_run。 */
   external?: { station: string; op: string };
 }
 
-/** 参数说明只留第一句：完整的在 tool_help 里，列表要短。 */
+/** 参数说明只留第一句：完整的在 tool_search 里，列表要短。 */
 function firstSentence(text: string): string {
   const m = /^[^。；;\n]*/.exec(text);
   const head = (m ? m[0] : text).trim();
@@ -106,7 +108,7 @@ const typeNames: Record<string, string> = {
   duration: '时长，例如 "30m"',
 };
 
-/** tool_help 的内容：完整说明、每个参数、例子。 */
+/** tool_search / tool_help 的内容：完整说明、每个参数、例子。 */
 function helpText(op: Op): string {
   const parts = [op.summary];
   if (op.description) parts.push(op.description);
@@ -177,22 +179,37 @@ export function callTarget(tool: ToolDef, params: ParamValues): { name: string; 
 
 export interface DescribeToolsOptions {
   /**
-   * 紧凑模式（编排档位）：仅将核心主链路工具以精简 schema 直出，其余扩展/第三方工具收敛到 onset_call 路由。
-   * 用于避开 Antigravity CLI（agy acp）约 32 KB 的 eager MCP 工具声明上限导致的静默丢弃。
+   * 静态紧凑模式（仅编排档位生效，默认开启）：核心主链路以精简 schema 直出，
+   * 其余扩展与第三方站工具通过 tool_search 检索并经 tool_call 执行。
+   * 设为 false 或设置 ONSET_TOOLS_FULL=1 可退回全量直出。
    */
   compact?: boolean;
 }
 
 export interface ToolCatalog {
-  /** 经 tools/list 暴露给 MCP 客户端的工具列表。 */
+  /** 经 tools/list（或 director customTools）暴露的静态顶层工具列表。 */
   exposed: ToolDef[];
-  /** 全量工具表（含经 onset_call 路由的扩展工具），供 tool_help 与调用分发查找。 */
+  /** 全量工具表（含经 tool_call 路由的扩展工具），供 tool_search 与调用分发查找。 */
   all: ToolDef[];
-  /** 紧凑模式下被折叠进 onset_call 的工具名集合。 */
+  /** 紧凑模式下折叠到 tool_call 的扩展工具名集合。 */
   routedNames: ReadonlySet<string>;
 }
 
-function controlTools(compact: boolean): ToolDef[] {
+function controlTools(profile: Profile, compact: boolean): ToolDef[] {
+  const discoveryTool: ToolDef =
+    profile === 'orchestrator'
+      ? toolSearchToolDef(compact)
+      : {
+          name: LegacyToolHelpName,
+          description: '查一个工具的完整说明、参数与例子（参数怎么填、产出什么、和其他步骤的关系）。',
+          inputSchema: {
+            type: 'object',
+            properties: { tool: { type: 'string', description: '工具名' } },
+            required: ['tool'],
+            additionalProperties: false,
+          },
+          help: '',
+        };
   return [
     {
       name: 'job_wait',
@@ -221,23 +238,11 @@ function controlTools(compact: boolean): ToolDef[] {
       },
       help: '',
     },
-    {
-      name: 'tool_help',
-      description: compact
-        ? '查任意工具（含 onset_call 扩展工具）的完整说明与参数；传 "*" 列全表'
-        : '查一个工具的完整说明、参数与例子（参数怎么填、产出什么、和其他步骤的关系）。',
-      inputSchema: {
-        type: 'object',
-        properties: { tool: { type: 'string', description: compact ? '工具名或 "*"' : '工具名' } },
-        required: ['tool'],
-        additionalProperties: false,
-      },
-      help: '',
-    },
+    discoveryTool,
   ];
 }
 
-/** 这一档位的工具目录：返回 tools/list 暴露的工具、全量工具与被路由进 onset_call 的集合。 */
+/** 这一档位的工具目录：返回顶层静态暴露工具、全量工具表与被路由进 tool_call 的集合。 */
 export function describeToolCatalog(profile: Profile, root = '', options: DescribeToolsOptions = {}): ToolCatalog {
   const ops: ToolDef[] = [];
   const extras = profile === 'orchestrator' && root !== '' ? externalOps() : [];
@@ -298,8 +303,8 @@ export function describeToolCatalog(profile: Profile, root = '', options: Descri
     });
   }
   ops.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  const compact = options.compact === true && profile === 'orchestrator';
-  const controls = controlTools(compact);
+  const compact = profile === 'orchestrator' && (options.compact ?? compactModeEnabled());
+  const controls = controlTools(profile, compact);
   if (!compact) {
     const all = [...ops, ...controls];
     return { exposed: all, all, routedNames: new Set() };
@@ -310,7 +315,7 @@ export function describeToolCatalog(profile: Profile, root = '', options: Descri
     if (!tool.external && CompactCoreOps.has(tool.name)) direct.push(compactToolDef(tool));
     else routed.push(tool);
   }
-  const callTool = onsetCallToolDef(routed);
+  const callTool = toolCallToolDef(routed);
   return {
     exposed: [...direct, callTool, ...controls],
     all: [...ops, callTool, ...controls],
@@ -318,7 +323,7 @@ export function describeToolCatalog(profile: Profile, root = '', options: Descri
   };
 }
 
-/** 这一档位的全部工具。root 给了时（编排档位），再加上项目里第三方站的工具。 */
+/** 这一档位的顶层暴露工具。编排档位默认静态紧凑，渲染档位照旧 5–6 项。 */
 export function describeTools(profile: Profile, root = '', options: DescribeToolsOptions = {}): ToolDef[] {
   return describeToolCatalog(profile, root, options).exposed;
 }

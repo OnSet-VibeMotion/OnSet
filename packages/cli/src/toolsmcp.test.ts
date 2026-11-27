@@ -1,35 +1,66 @@
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { ResultMarker } from '@onset/engine/opworker';
 import { groupSpawnOptions } from '@onset/engine/procgroup';
 import { describe, expect, it } from 'vitest';
 import { allOps, opScopes } from './ops/op';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { Jobs, defaultWaitSeconds, describeTools, maxWaitSeconds, opCommand, prepareCall, serveToolsMCP, type Spawner } from './toolsmcp';
+import {
+  defaultWaitSeconds,
+  describeToolCatalog,
+  describeTools,
+  Jobs,
+  maxWaitSeconds,
+  opCommand,
+  prepareCall,
+  type Spawner,
+  serveToolsMCP,
+} from './toolsmcp';
 
 /** 把一串 JSON-RPC 请求喂给服务，收齐回复（按 id）。 */
-async function call(requests: Record<string, unknown>[], spawner: Spawner, profile: 'orchestrator' | 'renderer' = 'orchestrator'): Promise<Map<unknown, any>> {
+async function call(
+  requests: Record<string, unknown>[],
+  spawner: Spawner,
+  profile: 'orchestrator' | 'renderer' = 'orchestrator',
+): Promise<Map<unknown, any>> {
   const out = new Map<unknown, any>();
   async function* lines() {
     for (const r of requests) yield JSON.stringify({ jsonrpc: '2.0', ...r });
   }
-  await serveToolsMCP(lines(), (line) => {
-    const msg = JSON.parse(line);
-    out.set(msg.id, msg);
-  }, profile, spawner);
+  await serveToolsMCP(
+    lines(),
+    (line) => {
+      const msg = JSON.parse(line);
+      out.set(msg.id, msg);
+    },
+    profile,
+    spawner,
+  );
   return out;
 }
 
 /** 假的执行进程：sh 脚本里能拿到操作名（$1）与参数 JSON（$2），最后按协议写结果行。 */
-function fakeWorker(script: string, result: Record<string, unknown> = { ok: true, exit_code: 0 }, windowsScript = ''): Spawner {
+function fakeWorker(
+  script: string,
+  result: Record<string, unknown> = { ok: true, exit_code: 0 },
+  windowsScript = '',
+): Spawner {
   if (process.platform === 'win32') {
     const code = `(async () => {${windowsScript};process.stdout.write(${JSON.stringify(ResultMarker + JSON.stringify(result) + '\n')});})()`;
-    return (name, params) => spawn(process.execPath, ['-e', code, name, JSON.stringify(params)], { stdio: ['ignore', 'pipe', 'pipe'], ...groupSpawnOptions() });
+    return (name, params) =>
+      spawn(process.execPath, ['-e', code, name, JSON.stringify(params)], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        ...groupSpawnOptions(),
+      });
   }
   const marker = ResultMarker.replace('\u0000', '\\0');
   const tail = `printf '${marker}%s\\n' '${JSON.stringify(result)}'`;
-  return (name, params) => spawn('/bin/sh', ['-c', `${script}\n${tail}`, 'onset', name, JSON.stringify(params)], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+  return (name, params) =>
+    spawn('/bin/sh', ['-c', `${script}\n${tail}`, 'onset', name, JSON.stringify(params)], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+    });
 }
 
 const text = (msg: any): string => msg.result.content[0].text;
@@ -38,19 +69,45 @@ describe('onset tools MCP', () => {
   it('makes one tool per operation, with named parameters', () => {
     const tools = describeTools('orchestrator');
     const names = tools.map((t) => t.name);
-    for (const want of ['align_run', 'scene_prepare', 'timing_report', 'scene_run', 'scene_run_all', 'beat_import', 'beat_cues', 'film_style_use', 'memory_remember', 'studio_show', 'hyperframes', 'job_wait', 'tool_help']) expect(names).toContain(want);
+    for (const want of [
+      'align_run',
+      'scene_prepare',
+      'timing_report',
+      'scene_run',
+      'scene_run_all',
+      'beat_import',
+      'beat_cues',
+      'film_style_use',
+      'studio_show',
+      'hyperframes',
+      'job_wait',
+      'tool_search',
+      'tool_call',
+    ])
+      expect(names).toContain(want);
+    // 全量目录保留每条操作（含经 tool_call 路由的扩展工具，如 memory_remember）。
+    const allNames = describeToolCatalog('orchestrator').all.map((t) => t.name);
+    expect(allNames).toContain('memory_remember');
     // 建项目、准备前置资源、两个 MCP 服务是客户端自己的入口，不是工具。
-    for (const absent of ['setup', 'init', 'run', 'studio_permission_mcp', 'studio_tools_mcp']) expect(names).not.toContain(absent);
-    const importTool = tools.find((t) => t.name === 'beat_import')!;
+    for (const absent of ['setup', 'init', 'run', 'studio_permission_mcp', 'studio_tools_mcp'])
+      expect(allNames).not.toContain(absent);
+    const importTool = describeTools('orchestrator', '', { compact: false }).find((t) => t.name === 'beat_import')!;
     expect(importTool.inputSchema.required).toEqual(['music']);
-    expect(Object.keys(importTool.inputSchema.properties!)).toEqual(expect.arrayContaining(['music', 'replace', 'project_root', 'wait_seconds']));
+    expect(Object.keys(importTool.inputSchema.properties!)).toEqual(
+      expect.arrayContaining(['music', 'replace', 'project_root', 'wait_seconds']),
+    );
     expect(importTool.inputSchema.properties).not.toHaveProperty('args');
   });
 
   it('keeps detailed audio samples in the requested report file', async () => {
-    const request = { id: 1, method: 'tools/call', params: {
-      name: 'audio_check', arguments: { audio: 'voice.wav', srt: 'voice.srt', report_json: 'production/check.json' },
-    } };
+    const request = {
+      id: 1,
+      method: 'tools/call',
+      params: {
+        name: 'audio_check',
+        arguments: { audio: 'voice.wav', srt: 'voice.srt', report_json: 'production/check.json' },
+      },
+    };
     const result = { ok: true, speech: [{ start: 0, end: 1 }], cues: [{ index: 1 }], hints: ['hint'] };
     const worker = fakeWorker('true', { ok: true, exit_code: 0, data: result });
     const compact = (await call([request], worker)).get(1);
@@ -61,7 +118,14 @@ describe('onset tools MCP', () => {
   });
 
   it('gives the Windows renderer its required source check, retaining the other platform tool lists', () => {
-    expect(describeTools('renderer').map((t) => t.name)).toEqual(['hyperframes', ...(process.platform==='win32'?['scene_lint']:[]), 'scene_preview_check', 'job_wait', 'job_cancel', 'tool_help']);
+    expect(describeTools('renderer').map((t) => t.name)).toEqual([
+      'hyperframes',
+      ...(process.platform === 'win32' ? ['scene_lint'] : []),
+      'scene_preview_check',
+      'job_wait',
+      'job_cancel',
+      'tool_help',
+    ]);
   });
 
   // 说明与例子是 agent 照着调的：写成命令行它就会去终端里找 onset；例子里的参数名必须真的存在。
@@ -69,8 +133,15 @@ describe('onset tools MCP', () => {
     for (const op of allOps()) {
       if (!opScopes(op).includes('orchestrator') && !opScopes(op).includes('renderer')) continue;
       expect(op.summary, op.name).not.toBe('');
-      const prose = [op.summary, op.description ?? '', ...(op.examples ?? []), ...Object.values(op.params).map((p) => p.description)].join('\n');
-      expect(prose, `${op.name} 的说明里写了命令行`).not.toMatch(/(^|[^\w/.\-`])onset (setup|init|run|scene|beat|align|song|cast|dialogue|validate|memory|film-style|concat|review|audio|config|studio|style|usage|archive|hyperframes)\b/m);
+      const prose = [
+        op.summary,
+        op.description ?? '',
+        ...(op.examples ?? []),
+        ...Object.values(op.params).map((p) => p.description),
+      ].join('\n');
+      expect(prose, `${op.name} 的说明里写了命令行`).not.toMatch(
+        /(^|[^\w/.\-`])onset (setup|init|run|scene|beat|align|song|cast|dialogue|validate|memory|film-style|concat|review|audio|config|studio|style|usage|archive|hyperframes)\b/m,
+      );
       for (const example of op.examples ?? []) {
         if (example.trim().startsWith('#') || example.trim() === '') continue;
         const m = /^([a-z_]+)\((.*)\)(\s+#.*)?$/.exec(example.trim());
@@ -78,7 +149,8 @@ describe('onset tools MCP', () => {
         expect(m![1], `${op.name} 的例子调的是别的工具：${example}`).toBe(op.name);
         if (m![2] === '') continue;
         const params = JSON.parse(m![2]) as Record<string, unknown>;
-        for (const key of Object.keys(params)) expect(op.params, `${op.name} 的例子用了不存在的参数 ${key}`).toHaveProperty(key);
+        for (const key of Object.keys(params))
+          expect(op.params, `${op.name} 的例子用了不存在的参数 ${key}`).toHaveProperty(key);
       }
     }
   });
@@ -94,10 +166,19 @@ describe('onset tools MCP', () => {
 
   it('only lets local, read-only or rendering HyperFrames commands through', () => {
     const hf = describeTools('renderer').find((t) => t.name === 'hyperframes')!;
-    expect(prepareCall(hf, { subcommand: 'check', args: ['--json'] })).toMatchObject({ subcommand: 'check', args: ['--json'] });
+    expect(prepareCall(hf, { subcommand: 'check', args: ['--json'] })).toMatchObject({
+      subcommand: 'check',
+      args: ['--json'],
+    });
     // snapshot 不把画面发给外部视觉服务。
-    expect(prepareCall(hf, { subcommand: 'snapshot', args: ['--at', '1.5'] }).args).toEqual(['--at', '1.5', '--describe', 'false']);
-    for (const sub of ['cloud', 'publish', 'skills', 'upgrade', 'preview']) expect(() => prepareCall(hf, { subcommand: sub })).toThrow(/不放行/);
+    expect(prepareCall(hf, { subcommand: 'snapshot', args: ['--at', '1.5'] }).args).toEqual([
+      '--at',
+      '1.5',
+      '--describe',
+      'false',
+    ]);
+    for (const sub of ['cloud', 'publish', 'skills', 'upgrade', 'preview'])
+      expect(() => prepareCall(hf, { subcommand: sub })).toThrow(/不放行/);
     expect(() => prepareCall(hf, { subcommand: 'timeline', args: ['move'] })).toThrow(/--json/);
     expect(prepareCall(hf, { subcommand: 'timeline', args: ['--json'] }).args).toEqual(['--json']);
   });
@@ -108,11 +189,23 @@ describe('onset tools MCP', () => {
     expect(hf.inputSchema.properties!.subcommand.enum).not.toContain('render');
     expect(hf.help).not.toContain('hyperframes({"subcommand": "render"})');
     expect(hf.help).toContain('scene_run');
-    expect(prepareCall(hf, { subcommand: 'snapshot', args: ['scenes/scene-002', '--at', '1.5'] }).args).toContain('--describe');
+    expect(prepareCall(hf, { subcommand: 'snapshot', args: ['scenes/scene-002', '--at', '1.5'] }).args).toContain(
+      '--describe',
+    );
     const spawned: string[] = [];
-    const replies = await call([
-      { id: 1, method: 'tools/call', params: { name: 'hyperframes', arguments: { subcommand: 'render', args: ['scenes/scene-002'] } } },
-    ], (name, params) => { spawned.push(name); return fakeWorker('')(name, params); });
+    const replies = await call(
+      [
+        {
+          id: 1,
+          method: 'tools/call',
+          params: { name: 'hyperframes', arguments: { subcommand: 'render', args: ['scenes/scene-002'] } },
+        },
+      ],
+      (name, params) => {
+        spawned.push(name);
+        return fakeWorker('')(name, params);
+      },
+    );
     expect(replies.get(1).result.isError).toBe(true);
     expect(text(replies.get(1))).toContain('scene_run');
     expect(spawned).toEqual([]);
@@ -124,7 +217,11 @@ describe('onset tools MCP', () => {
   it('runs an operation and returns its text and structured result', async () => {
     const replies = await call(
       [{ id: 1, method: 'tools/call', params: { name: 'beat_bars', arguments: {} } }],
-      fakeWorker('echo "op=$1 params=$2"; echo "共 8 小节"', { ok: true, data: { bars: 8 }, exit_code: 0 }, 'console.log("op="+process.argv[1]+" params="+process.argv[2]);console.log("共 8 小节")'),
+      fakeWorker(
+        'echo "op=$1 params=$2"; echo "共 8 小节"',
+        { ok: true, data: { bars: 8 }, exit_code: 0 },
+        'console.log("op="+process.argv[1]+" params="+process.argv[2]);console.log("共 8 小节")',
+      ),
     );
     const r = replies.get(1).result;
     expect(r.isError).toBe(false);
@@ -135,7 +232,10 @@ describe('onset tools MCP', () => {
   });
 
   it('reports failures as tool errors', async () => {
-    const replies = await call([{ id: 1, method: 'tools/call', params: { name: 'beat_bars', arguments: {} } }], fakeWorker('echo 读网格', { ok: false, error: '还没有已确认的节拍网格', exit_code: 1 }));
+    const replies = await call(
+      [{ id: 1, method: 'tools/call', params: { name: 'beat_bars', arguments: {} } }],
+      fakeWorker('echo 读网格', { ok: false, error: '还没有已确认的节拍网格', exit_code: 1 }),
+    );
     expect(replies.get(1).result.isError).toBe(true);
     expect(text(replies.get(1))).toContain('[失败] 还没有已确认的节拍网格');
   });
@@ -146,21 +246,29 @@ describe('onset tools MCP', () => {
       started = true;
       return fakeWorker('true')(name, params);
     };
-    const replies = await call([{ id: 1, method: 'tools/call', params: { name: 'beat_import', arguments: {} } }], spawner);
+    const replies = await call(
+      [{ id: 1, method: 'tools/call', params: { name: 'beat_import', arguments: {} } }],
+      spawner,
+    );
     expect(replies.get(1).result.isError).toBe(true);
     expect(text(replies.get(1))).toContain('缺少参数 music');
     expect(started).toBe(false);
   });
 
   it('hands back a job for long runs and lets the agent wait for it', async () => {
-    const replies = await call([{ id: 1, method: 'tools/call', params: { name: 'beat_bars', arguments: { wait_seconds: 0 } } }], fakeWorker('sleep 0.3; echo done', undefined, 'await new Promise(r=>setTimeout(r,300));console.log("done")'));
+    const replies = await call(
+      [{ id: 1, method: 'tools/call', params: { name: 'beat_bars', arguments: { wait_seconds: 0 } } }],
+      fakeWorker('sleep 0.3; echo done', undefined, 'await new Promise(r=>setTimeout(r,300));console.log("done")'),
+    );
     expect(text(replies.get(1))).toMatch(/还在运行：任务 job-1/);
     expect(text(replies.get(1))).toContain('结束本轮对话会终止仍在运行的任务');
     expect(text(replies.get(1))).toContain('不要用定时任务');
   });
 
   it('lets a built-in agent wait for completion without an MCP timeout', async () => {
-    const jobs = new Jobs(fakeWorker('sleep 0.2; echo done', undefined, 'await new Promise(r=>setTimeout(r,200));console.log("done")'));
+    const jobs = new Jobs(
+      fakeWorker('sleep 0.2; echo done', undefined, 'await new Promise(r=>setTimeout(r,200));console.log("done")'),
+    );
     const reply = await jobs.wait(jobs.start('scene_run_all', {}), undefined);
     expect(reply.text).toContain('done');
     expect(reply.text).toContain('[完成]');
@@ -212,7 +320,8 @@ describe('onset tools MCP', () => {
         });
       }
     }
-    const send = (msg: Record<string, unknown>) => (push ? push(JSON.stringify({ jsonrpc: '2.0', ...msg })) : queue.push(JSON.stringify({ jsonrpc: '2.0', ...msg })));
+    const send = (msg: Record<string, unknown>) =>
+      push ? push(JSON.stringify({ jsonrpc: '2.0', ...msg })) : queue.push(JSON.stringify({ jsonrpc: '2.0', ...msg }));
     const served = serveToolsMCP(
       lines(),
       (line) => {
@@ -220,9 +329,17 @@ describe('onset tools MCP', () => {
         out.set(msg.id, msg);
       },
       'orchestrator',
-      fakeWorker('sleep 1; echo done', { ok: true, exit_code: 0 }, 'await new Promise(r=>setTimeout(r,1000));console.log("done")'),
+      fakeWorker(
+        'sleep 1; echo done',
+        { ok: true, exit_code: 0 },
+        'await new Promise(r=>setTimeout(r,1000));console.log("done")',
+      ),
     );
-    send({ id: 1, method: 'tools/call', params: { name: 'scene_run_all', arguments: { scenes: 'scenes/', wait_seconds: 0 } } });
+    send({
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'scene_run_all', arguments: { scenes: 'scenes/', wait_seconds: 0 } },
+    });
     while (!out.has(1)) await new Promise((r) => setTimeout(r, 20));
     send({ id: 2, method: 'tools/call', params: { name: 'job_wait', arguments: { job: 'job-1', wait_seconds: 0.1 } } });
     while (!out.has(2)) await new Promise((r) => setTimeout(r, 20));
@@ -233,7 +350,11 @@ describe('onset tools MCP', () => {
 
   // hyperframes 的输出是写给终端的：跑着时只报进度，跑完交精简后的结果，原样输出留在临时文件里（hfoutput.ts）。
   it.skipIf(process.platform === 'win32')('compacts hyperframes output', async () => {
-    const jobs = new Jobs(fakeWorker(`printf '%s\\n' '@hf-progress {"code":"capture","pct":40}' '[INFO] trace' '  ███░░  40%  Capturing'; sleep 0.4; printf '%s\\n' '◇  /p/scene-02.mp4' '   1.2 MB · 6.4s video'`));
+    const jobs = new Jobs(
+      fakeWorker(
+        `printf '%s\\n' '@hf-progress {"code":"capture","pct":40}' '[INFO] trace' '  ███░░  40%  Capturing'; sleep 0.4; printf '%s\\n' '◇  /p/scene-02.mp4' '   1.2 MB · 6.4s video'`,
+      ),
+    );
     const job = jobs.start('hyperframes', { subcommand: 'render', args: [] });
     const running = await jobs.wait(job, 0.2);
     expect(running.text).toMatch(/^进度 40%（capture）\n\[还在运行：任务 job-1/);
@@ -267,12 +388,26 @@ describe('onset tools MCP', () => {
         });
       }
     }
-    const send = (msg: Record<string, unknown>) => (push ? push(JSON.stringify({ jsonrpc: '2.0', ...msg })) : queue.push(JSON.stringify({ jsonrpc: '2.0', ...msg })));
-    const served = serveToolsMCP(lines(), (line) => {
-      const msg = JSON.parse(line);
-      out.set(msg.id, msg);
-    }, 'orchestrator', fakeWorker('echo first; sleep 0.4; echo second', { ok: true, data: { n: 2 }, exit_code: 0 }, 'console.log("first");await new Promise(r=>setTimeout(r,1000));console.log("second")'));
-    send({ id: 1, method: 'tools/call', params: { name: 'beat_bars', arguments: { wait_seconds: process.platform === 'win32' ? 0.5 : 0.1 } } });
+    const send = (msg: Record<string, unknown>) =>
+      push ? push(JSON.stringify({ jsonrpc: '2.0', ...msg })) : queue.push(JSON.stringify({ jsonrpc: '2.0', ...msg }));
+    const served = serveToolsMCP(
+      lines(),
+      (line) => {
+        const msg = JSON.parse(line);
+        out.set(msg.id, msg);
+      },
+      'orchestrator',
+      fakeWorker(
+        'echo first; sleep 0.4; echo second',
+        { ok: true, data: { n: 2 }, exit_code: 0 },
+        'console.log("first");await new Promise(r=>setTimeout(r,1000));console.log("second")',
+      ),
+    );
+    send({
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'beat_bars', arguments: { wait_seconds: process.platform === 'win32' ? 0.5 : 0.1 } },
+    });
     while (!out.has(1)) await new Promise((r) => setTimeout(r, 20));
     expect(text(out.get(1))).toContain('first');
     send({ id: 2, method: 'tools/call', params: { name: 'job_wait', arguments: { job: 'job-1', wait_seconds: 5 } } });
@@ -293,21 +428,36 @@ describe('onset tools MCP', () => {
     let release = () => {};
     const ended = new Promise<void>((resolve) => (release = resolve));
     async function* lines() {
-      yield JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'beat_bars', arguments: { wait_seconds: 0 } } });
+      yield JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'beat_bars', arguments: { wait_seconds: 0 } },
+      });
       await ended;
     }
     let pid = 0;
-    const worker = fakeWorker('sleep 30', { ok: true, exit_code: 0 }, 'await new Promise(resolve => setTimeout(resolve,30000))');
+    const worker = fakeWorker(
+      'sleep 30',
+      { ok: true, exit_code: 0 },
+      'await new Promise(resolve => setTimeout(resolve,30000))',
+    );
     const spawner: Spawner = (name, params) => {
       const child = worker(name, params);
       pid = child.pid ?? 0;
       return child;
     };
     const controller = new AbortController();
-    const served = serveToolsMCP(lines(), (line) => {
-      const msg = JSON.parse(line);
-      out.set(msg.id, msg);
-    }, 'orchestrator', spawner, controller.signal);
+    const served = serveToolsMCP(
+      lines(),
+      (line) => {
+        const msg = JSON.parse(line);
+        out.set(msg.id, msg);
+      },
+      'orchestrator',
+      spawner,
+      controller.signal,
+    );
     while (!out.has(1)) await new Promise((r) => setTimeout(r, 20));
     expect(text(out.get(1))).toContain('还在运行');
     const alive = () => {
@@ -328,14 +478,17 @@ describe('onset tools MCP', () => {
   });
 
   it('explains a tool on request, with its parameters and examples', async () => {
-    const replies = await call([{ id: 1, method: 'tools/call', params: { name: 'tool_help', arguments: { tool: 'beat_regrid' } } }], fakeWorker('true'));
+    const replies = await call(
+      [{ id: 1, method: 'tools/call', params: { name: 'tool_help', arguments: { tool: 'beat_regrid' } } }],
+      fakeWorker('true'),
+    );
     const help = text(replies.get(1));
     expect(help).toContain('meter（整数）');
     expect(help).toContain('beat_regrid({"meter": 4, "anchor": 1})');
   });
 
   it('prunes admin memory tools and irrelevant flow tools for project sessions', () => {
-    const allNames = describeTools('orchestrator').map((t) => t.name);
+    const allNames = describeToolCatalog('orchestrator').all.map((t) => t.name);
     // 管理类 memory_* 仅留给 cli，编排端只保留制作期需要的记忆工具。
     expect(allNames).toContain('memory_remember');
     expect(allNames).toContain('memory_consolidate');
@@ -348,8 +501,11 @@ describe('onset tools MCP', () => {
 
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'onset-mcp-flow-'));
     try {
-      fs.writeFileSync(path.join(tmp, 'onset.flow.json'), JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } }));
-      const speechNames = describeTools('orchestrator', tmp).map((t) => t.name);
+      fs.writeFileSync(
+        path.join(tmp, 'onset.flow.json'),
+        JSON.stringify({ version: 1, production: { id: 'speech', canvas: 'vertical-3x4' } }),
+      );
+      const speechNames = describeToolCatalog('orchestrator', tmp).all.map((t) => t.name);
       expect(speechNames).toContain('scene_frames_batch');
       expect(speechNames).toContain('align_run');
       expect(speechNames).toContain('song_init');
@@ -358,8 +514,11 @@ describe('onset tools MCP', () => {
       expect(speechNames).not.toContain('beat_analyze');
       expect(speechNames).not.toContain('song_generate');
 
-      fs.writeFileSync(path.join(tmp, 'onset.flow.json'), JSON.stringify({ version: 1, production: { id: 'beat', canvas: 'vertical-9x16' } }));
-      const beatNames = describeTools('orchestrator', tmp).map((t) => t.name);
+      fs.writeFileSync(
+        path.join(tmp, 'onset.flow.json'),
+        JSON.stringify({ version: 1, production: { id: 'beat', canvas: 'vertical-9x16' } }),
+      );
+      const beatNames = describeToolCatalog('orchestrator', tmp).all.map((t) => t.name);
       expect(beatNames).toContain('beat_cues');
       expect(beatNames).not.toContain('voice_synthesize');
       expect(beatNames).not.toContain('align_run');

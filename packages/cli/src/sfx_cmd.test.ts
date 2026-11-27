@@ -5,13 +5,13 @@ import { FreesoundApiKeyEnv } from '@onset/engine/freesound';
 import { describe, expect, it } from 'vitest';
 import { findOp, normalizeParams, TextSink } from './ops/op';
 import { tempDir } from './testutil';
-import { describeTools } from './toolsmcp';
+import { describeToolCatalog, describeTools } from './toolsmcp';
 
 const SfxAndBaseOps = ['assets_generate_base', 'sfx_search', 'sfx_download'] as const;
 
 describe('sfx_cmd operations and MCP exposure', () => {
   it('exposes base assets & sfx tools only to orchestrator and never to renderer', () => {
-    const orchestratorNames = describeTools('orchestrator').map((t) => t.name);
+    const orchestratorNames = describeToolCatalog('orchestrator').all.map((t) => t.name);
     const rendererNames = describeTools('renderer').map((t) => t.name);
     for (const name of SfxAndBaseOps) {
       expect(orchestratorNames, `编排端应暴露 ${name}`).toContain(name);
