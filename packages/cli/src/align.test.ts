@@ -197,5 +197,12 @@ describe('align', () => {
     expect(items).toHaveLength(10);
     expect(items[0]).toMatchObject({ text: '第', start: 0.1, end: 0.2 });
     expect(items[5]).toMatchObject({ text: '第', start: 10.7, end: 10.8 });
+
+    // 若规范 align.json 本身作为输入（含非零偏移），不得覆写原文件，避免重复执行时偏移累加。
+    const before = fs.readFileSync(canonical, 'utf8');
+    const shifted = await runAlign('build', '--project-root', root, '--fps', '30', '--align', canonical + '@1.5');
+    expect(shifted.err).toBeUndefined();
+    expect(fs.readFileSync(canonical, 'utf8')).toBe(before);
+    expect(readCues(path.join(root, 'production/audio/voice.srt'))[0].start_seconds).toBeCloseTo(1.6, 3);
   });
 });

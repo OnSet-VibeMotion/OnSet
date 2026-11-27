@@ -222,12 +222,10 @@ defineOp({
     align.writeJSON(report, reportJSON);
     const r = result.report;
     const isDefaultSRT = canonicalPath(srt) === canonicalPath(path.join(root, 'production/audio/voice.srt'));
-    const alreadyCanonical =
-      segments.length === 1 &&
-      segments[0].offset === 0 &&
-      canonicalPath(segments[0].path) === canonicalPath(defaultAlign);
+    const canonicalTarget = canonicalPath(defaultAlign);
+    const inputUsesCanonical = segments.some((seg) => canonicalPath(seg.path) === canonicalTarget);
     let canonicalAlign: string | undefined;
-    if (r.ok && isDefaultSRT && items.length > 0 && !alreadyCanonical) {
+    if (r.ok && isDefaultSRT && items.length > 0 && !inputUsesCanonical) {
       const roundSec = (value: number) => Math.round(value * 1_000_000) / 1_000_000;
       align.writeJSON(
         defaultAlign,

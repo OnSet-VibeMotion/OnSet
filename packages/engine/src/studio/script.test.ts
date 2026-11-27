@@ -6,6 +6,7 @@ import * as align from '../align';
 import { goodSVG, goodYAML } from '../cast/fixtures';
 import * as dialogue from '../dialogue';
 import { recordFlow } from '../flow';
+import { marshal } from '../gojson';
 import { setEnv, startStudio, studioRequest, tempDir, writeStudioFile } from './testsupport';
 
 describe('script', () => {
@@ -255,7 +256,7 @@ describe('script', () => {
     writeStudioFile(path.join(root, 'production/audio/voice.wav'), 'managed-wav');
     writeStudioFile(
       path.join(root, 'production/audio/voice.tts/report.json'),
-      JSON.stringify({
+      marshal({
         duration_seconds: 12.65,
         paragraph_pause_ms: 650,
         segments: [
@@ -300,7 +301,7 @@ describe('script', () => {
     const chars = [...longDraft];
     // 故意漏掉第 10 个字（1/20 = 5% 插值，match_rate = 0.95）。
     const entries = chars.filter((_, i) => i !== 9).map((ch, i) => ({ text: ch, start: i * 0.5, end: i * 0.5 + 0.4 }));
-    writeStudioFile(alignPath, JSON.stringify(entries));
+    writeStudioFile(alignPath, marshal(entries));
     const later = new Date(Date.now() + 4000);
     fs.utimesSync(alignPath, later, later);
     ({ body } = await studioRequest(s, 'GET', '/api/script'));
@@ -309,8 +310,18 @@ describe('script', () => {
     expect(body.blocks[0].nodes[0].timings[9]).toBeNull();
     expect(body.blocks[0].nodes[0].timings[19]).toEqual({ start: 9, end: 9.4 });
 
+    // 替换 voice.wav 后旧 voice.tts/report.json 不再同源：不能用旧报告的 12.65s 拒绝新的 58s 有效对齐。
+    writeStudioFile(path.join(root, 'production/audio/voice.wav'), 'replaced-longer-wav');
+    const longEntries = chars.map((ch, i) => ({ text: ch, start: i * 2.9, end: i * 2.9 + 2.8 }));
+    writeStudioFile(alignPath, marshal(longEntries));
+    const afterReplace = new Date(Date.now() + 5000);
+    fs.utimesSync(alignPath, afterReplace, afterReplace);
+    ({ body } = await studioRequest(s, 'GET', '/api/script'));
+    expect(body.voice.timing).toBe('aligned');
+    expect(body.blocks[0].nodes[0].timings[19]).toEqual({ start: 55.1, end: 57.9 });
+
     // 严重残缺的 align.json（漏掉一半字）安全降级回 estimated。
-    writeStudioFile(alignPath, JSON.stringify(entries.slice(0, 8)));
+    writeStudioFile(alignPath, marshal(entries.slice(0, 8)));
     const evenLater = new Date(Date.now() + 6000);
     fs.utimesSync(alignPath, evenLater, evenLater);
     ({ body } = await studioRequest(s, 'GET', '/api/script'));

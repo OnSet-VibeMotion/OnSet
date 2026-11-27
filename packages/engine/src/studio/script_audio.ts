@@ -220,10 +220,15 @@ export function scriptAudio(
   const stem = option.path.slice(0, -path.extname(option.path).length);
   const voice: ScriptAudio = { ...option, seconds: 0, timing: 'estimated' };
   const report = file(root, stem + '.tts/report.json');
+  const managed = !!report && matchesManagedAudio(root, option, stem);
+  let trustedAudioSeconds = 0;
   if (report) {
     try {
       const seconds: unknown = JSON.parse(fs.readFileSync(report, 'utf8')).duration_seconds;
-      if (typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0) voice.seconds = seconds;
+      if (typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0) {
+        voice.seconds = seconds;
+        if (managed) trustedAudioSeconds = seconds;
+      }
     } catch {
       /* 报告损坏不影响播放。 */
     }
@@ -244,11 +249,11 @@ export function scriptAudio(
     return full && isFreshForAudio(root, option, stem, full, name === stem + '.tts/align.json') ? [full] : [];
   });
   const freshSubtitles = subtitles && isFreshForAudio(root, option, stem, subtitles) ? subtitles : undefined;
-  const managedReport = report && matchesManagedAudio(root, option, stem) ? report : undefined;
+  const managedReport = managed ? report : undefined;
   if (freshEvidence.length === 0 && !freshSubtitles && !managedReport) return { voice };
   const key = [
     option.version,
-    voice.seconds,
+    trustedAudioSeconds,
     freshEvidence.map(statTag).join(','),
     statTag(freshSubtitles),
     statTag(managedReport),
@@ -259,7 +264,7 @@ export function scriptAudio(
   if (cached?.key !== key) {
     cached = { key, timing: 'estimated' };
     for (const evidence of freshEvidence) {
-      const blocks = buildAlignedBlocks(script, evidence, voice.seconds);
+      const blocks = buildAlignedBlocks(script, evidence, trustedAudioSeconds);
       if (blocks) {
         cached.blocks = blocks;
         cached.timing = 'aligned';
@@ -267,14 +272,14 @@ export function scriptAudio(
       }
     }
     if (!cached.blocks && freshSubtitles) {
-      const blocks = buildSubtitleBlocks(script, freshSubtitles, voice.seconds);
+      const blocks = buildSubtitleBlocks(script, freshSubtitles, trustedAudioSeconds);
       if (blocks) {
         cached.blocks = blocks;
         cached.timing = 'subtitled';
       }
     }
     if (!cached.blocks && managedReport) {
-      const blocks = buildSegmentBlocks(script, managedReport, voice.seconds);
+      const blocks = buildSegmentBlocks(script, managedReport, trustedAudioSeconds);
       if (blocks) {
         cached.blocks = blocks;
         cached.timing = 'segmented';
